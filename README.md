@@ -6,9 +6,9 @@ Les listes sont conservées sous mongodb.
 
 ## Utilisation du bot
 
-Créer un groupe afin de gérer votre liste de courses.
-Puis ajouter le contact https://t.me/ma_liste_courses_1236548_bot à ce groupe.
-Vous pouvez partager le groupe avec d'autres personnes.
+1. Créer un groupe afin de gérer votre liste de courses.
+2. Puis ajouter le contact https://t.me/ma_liste_courses_1236548_bot à ce groupe.
+3. Vous pouvez partager le groupe avec d'autres personnes.
 
 Pour ajouter un produit, il suffit de faire
 * /add sucre

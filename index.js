@@ -136,7 +136,6 @@ function findAllTodosByUser(ctx, sort, title) {
         ctx.reply(typeof title == "undefined" ? ctx.i18n.t('list') : title,
             Markup.keyboard([Markup.callbackButton(button_list, '/list')])
                 .resize()
-                .oneTime()
                 .extra()
         );
     } else {
@@ -171,12 +170,12 @@ function findAllTodosByUser(ctx, sort, title) {
                             //.resize()
                             .extra()
                     );
-                    ctx.reply( ctx.i18n.t('list'),
-                        Markup.keyboard([Markup.callbackButton(button_list, '/list')])
-                            .resize()
-                            .oneTime()
-                            .extra()
-                    );
+                    //ctx.reply( ctx.i18n.t('list'),
+                    //    Markup.keyboard([Markup.callbackButton(button_list, '/list')])
+                    //        .resize()
+                    //        .oneTime()
+                    //        .extra()
+                    //);
                 } else {
                     ctx.reply(typeof title == "undefined" ? ctx.i18n.t('list') : title,
                         Markup.keyboard(arrayReply1)
