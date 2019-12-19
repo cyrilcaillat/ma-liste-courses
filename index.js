@@ -193,7 +193,7 @@ function findAllTodosByUser(ctx, sort, title) {
  */
 function findTodoById(ctx,id, callback) {
     console.log("findTodosById", id);
-    Todo.findOne($and:[{'_id':id},{'chatId':ctx.chat.id}])
+    Todo.findOne({$and:[{'_id':id},{'chatId':ctx.chat.id}]})
         .exec(function (err, todo) {
             if (err) {
                 console.log("findTodosById", err);
@@ -209,7 +209,7 @@ function findTodoById(ctx,id, callback) {
  */
 function findTodoByText(ctx,text, callback) {
     console.log("findTodosByText", text);
-    Todo.findOne($and:[{'text':text},{'chatId':ctx.chat.id}])
+    Todo.findOne({$and:[{'text':text},{'chatId':ctx.chat.id}]})
         .exec(function (err, todo) {
             if (err) {
                 console.log("findTodosByText", err);
