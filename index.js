@@ -72,7 +72,7 @@ bot.on('callback_query', ctx => {
     // get info from callback_query object
     var id = ctx.update.callback_query.data;
     console.log("callback id", id);
-    findTodoById(id, function (err, data) {
+    findTodoById(ctx,id, function (err, data) {
         if (data != null) {
             console.log("callback id", data._id);
             Todo.deleteOne({
@@ -99,7 +99,7 @@ bot.on('text', (ctx) => {
     if (ctx.update.message.text == button_list) {
         findAllTodosByUser(ctx, 'text',  ctx.i18n.t('list'));
     } else if (mode == 'keyboard') {
-        findTodoByText(ctx.update.message.text, function (err, data) {
+        findTodoByText(ctx,ctx.update.message.text, function (err, data) {
             if (data != null) {
                 console.log("callback id", data._id);
                 Todo.deleteOne({
@@ -191,11 +191,9 @@ function findAllTodosByUser(ctx, sort, title) {
  * @param {*} id 
  * @param {*} callback 
  */
-function findTodoById(id, callback) {
+function findTodoById(ctx,id, callback) {
     console.log("findTodosById", id);
-    Todo.findOne()
-        .where('_id')
-        .equals(id)
+    Todo.findOne($and:[{'_id':id},{'chatId':ctx.chat.id}])
         .exec(function (err, todo) {
             if (err) {
                 console.log("findTodosById", err);
@@ -209,11 +207,9 @@ function findTodoById(id, callback) {
  * @param {*} text 
  * @param {*} callback 
  */
-function findTodoByText(text, callback) {
+function findTodoByText(ctx,text, callback) {
     console.log("findTodosByText", text);
-    Todo.findOne()
-        .where('text')
-        .equals(text)
+    Todo.findOne($and:[{'text':text},{'chatId':ctx.chat.id}]
         .exec(function (err, todo) {
             if (err) {
                 console.log("findTodosByText", err);
