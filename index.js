@@ -36,7 +36,31 @@ bot.start((ctx) => {
 /**
  * Commande d'ajout. Ajout multiples avec séparateur ','
  */
+bot.command('delall', (ctx) => {
+    console.log("command delall");
+    Todo.deleteMany({ 'chatId': ctx.chat.id }, function (err) {
+        ctx.answerCbQuery(ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
+    });
+});
+bot.command('test', (ctx) => {
+    console.log("command test");
+    var text = "chocolat,farine,sucre,oeufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
+    var textArray = text.split(',');
+    for (var i in textArray) {
+        Todo.create({
+            text: textArray[i].trim(),
+            done: false,
+            creator: ctx.from.first_name + ' ' + ctx.from.last_name,
+            creatorId: ctx.from.id,
+            chatId: ctx.chat.id
+        }, function (err, data) {
+            if (err) console.log(err);
+        });
+    }
+    findAllTodosByUser(ctx, 'text', 'Init list '+text); 
+});
 bot.command('add', (ctx) => {
+    console.log("command add");
     var text = ctx.message.text;
     if (text.startsWith('/add@') == false) {
         text = ctx.message.text.substring(5);
@@ -63,6 +87,7 @@ bot.command('add', (ctx) => {
  * Commande /list
  */
 bot.command('list', (ctx) => {
+    console.log("command list");
     findAllTodosByUser(ctx, ctx.message.text.substring(6), ctx.i18n.t('list'));
 });
 /**
@@ -72,7 +97,7 @@ bot.on('callback_query', ctx => {
     // get info from callback_query object
     var id = ctx.update.callback_query.data;
     console.log("callback id", id);
-    findTodoById(ctx,id, function (err, data) {
+    findTodoById(ctx, id, function (err, data) {
         if (data != null) {
             console.log("callback id", data._id);
             Todo.deleteOne({
@@ -97,9 +122,9 @@ bot.on('text', (ctx) => {
     console.log("text", ctx.update.message.text);
     const button_list = ctx.i18n.t('button_list');
     if (ctx.update.message.text == button_list) {
-        findAllTodosByUser(ctx, 'text',  ctx.i18n.t('list'));
+        findAllTodosByUser(ctx, 'text', ctx.i18n.t('list'));
     } else if (mode == 'keyboard') {
-        findTodoByText(ctx,ctx.update.message.text, function (err, data) {
+        findTodoByText(ctx, ctx.update.message.text, function (err, data) {
             if (data != null) {
                 console.log("callback id", data._id);
                 Todo.deleteOne({
@@ -132,12 +157,12 @@ bot.launch();
 function findAllTodosByUser(ctx, sort, title) {
     console.log("findAllTodosByUser", sort, title);
     const button_list = ctx.i18n.t('button_list');
-    if (mode == "inline" && (typeof title=="undefined" || title.toLowerCase() != ctx.i18n.t('list').toLowerCase())) {
-        ctx.reply(typeof title == "undefined" ? ctx.i18n.t('list') : title,
-            Markup.keyboard([Markup.callbackButton(button_list, '/list')])
-                .resize()
-                .extra()
-        );
+    if (false && mode == "inline" && (typeof title == "undefined" || title.toLowerCase() != ctx.i18n.t('list').toLowerCase())) {
+        const keyboard = Markup.keyboard([Markup.callbackButton(button_list, '/list')])
+            .resize()
+            .oneTime()
+            .extra();
+        ctx.reply(typeof title == "undefined" ? ctx.i18n.t('list') : title, keyboard);
     } else {
         if (sort != "date") sort = "text";
         Todo.find()
@@ -158,18 +183,20 @@ function findAllTodosByUser(ctx, sort, title) {
                     cpt++;
                     if (cpt != 0 && cpt % 4 == 0) {
                         arrayReply1.push(arrayReply2);
-                        var arrayReply2 = new Array();
+                        arrayReply2 = new Array();
                     }
-                    
+
                 }
                 //ctx.reply(arrayReply0.join(','));
                 arrayReply1.push(arrayReply2);
+                console.log(arrayReply0.join(', ').length);
                 if (mode == 'inline') {
-                    ctx.reply(arrayReply0.join(', '),
-                        Markup.inlineKeyboard(arrayReply1)
-                            //.resize()
-                            .extra()
-                    );
+                    if (ctx.updateType == "callback_query" && typeof title != "undefined" && typeof title != ctx.i18n.t('list'))
+                        ctx.answerCbQuery(title);
+                    ctx.reply(arrayReply0.join(', ').length==0?'Empty':arrayReply0.join(', '), Markup.inlineKeyboard(arrayReply1)
+                        //.resize()
+                        .oneTime()
+                        .extra());
                     //ctx.reply( ctx.i18n.t('list'),
                     //    Markup.keyboard([Markup.callbackButton(button_list, '/list')])
                     //        .resize()
@@ -191,9 +218,9 @@ function findAllTodosByUser(ctx, sort, title) {
  * @param {*} id 
  * @param {*} callback 
  */
-function findTodoById(ctx,id, callback) {
+function findTodoById(ctx, id, callback) {
     console.log("findTodosById", id);
-    Todo.findOne({$and:[{'_id':id},{'chatId':ctx.chat.id}]})
+    Todo.findOne({ $and: [{ '_id': id }, { 'chatId': ctx.chat.id }] })
         .exec(function (err, todo) {
             if (err) {
                 console.log("findTodosById", err);
@@ -207,9 +234,9 @@ function findTodoById(ctx,id, callback) {
  * @param {*} text 
  * @param {*} callback 
  */
-function findTodoByText(ctx,text, callback) {
+function findTodoByText(ctx, text, callback) {
     console.log("findTodosByText", text);
-    Todo.findOne({$and:[{'text':text},{'chatId':ctx.chat.id}]})
+    Todo.findOne({ $and: [{ 'text': text }, { 'chatId': ctx.chat.id }] })
         .exec(function (err, todo) {
             if (err) {
                 console.log("findTodosByText", err);
