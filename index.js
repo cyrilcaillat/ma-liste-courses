@@ -39,46 +39,30 @@ bot.start((ctx) => {
 bot.command('delall', (ctx) => {
     console.log("command delall");
     Todo.deleteMany({ 'chatId': ctx.chat.id }, function (err) {
-        ctx.answerCbQuery(ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
+        ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
     });
 });
+/**
+ * jeu de test
+ */
 bot.command('test', (ctx) => {
     console.log("command test");
     var text = "chocolat,farine,sucre,oeufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
-    var textArray = text.split(',');
-    for (var i in textArray) {
-        Todo.create({
-            text: textArray[i].trim(),
-            done: false,
-            creator: ctx.from.first_name + ' ' + ctx.from.last_name,
-            creatorId: ctx.from.id,
-            chatId: ctx.chat.id
-        }, function (err, data) {
-            if (err) console.log(err);
-        });
-    }
-    findAllTodosByUser(ctx, 'text', 'Init list '+text); 
+    addTodo(ctx, text);
+    findAllTodosByUser(ctx, 'text', 'Init list ' + text);
 });
+/**
+ * Commande ajout
+ */
 bot.command('add', (ctx) => {
-    console.log("command add");
+    console.log("command add", ctx.message.text);
     var text = ctx.message.text;
     if (text.startsWith('/add@') == false) {
         text = ctx.message.text.substring(5);
         if (text.length > 0) {
-            var textArray = text.split(',');
-            for (var i in textArray) {
-                Todo.create({
-                    text: textArray[i].trim(),
-                    done: false,
-                    creator: ctx.from.first_name + ' ' + ctx.from.last_name,
-                    creatorId: ctx.from.id,
-                    chatId: ctx.chat.id
-                }, function (err, data) {
-                    console.log(data._doc.text);
-                    findAllTodosByUser(ctx, 'text', 'ajouté ' + data._doc.text);
-                });
-            }
-        }
+            addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
+        } else
+            ctx.reply(ctx.i18n.t('addWhat1'), { reply_to_message_id: ctx.message.message_id, force_reply: true, selective: true });
     } else {
         findAllTodosByUser(ctx);
     }
@@ -121,10 +105,19 @@ bot.on('callback_query', ctx => {
 bot.on('text', (ctx) => {
     console.log("text", ctx.update.message.text);
     const button_list = ctx.i18n.t('button_list');
+    var text = ctx.update.message.text;
     if (ctx.update.message.text == button_list) {
         findAllTodosByUser(ctx, 'text', ctx.i18n.t('list'));
+    } else if (mode == 'inline' && typeof ctx.update.message.message_id != "undefined") {
+        if (text.startsWith('/')) {
+            if (text.indexOf(' ') > 0)
+                text = text.substring(text.indexOf(' ') + 1);
+            else text = '';
+        }
+        if (text.length > 0)
+            addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
     } else if (mode == 'keyboard') {
-        findTodoByText(ctx, ctx.update.message.text, function (err, data) {
+        findTodoByText(ctx, text, function (err, data) {
             if (data != null) {
                 console.log("callback id", data._id);
                 Todo.deleteOne({
@@ -193,7 +186,7 @@ function findAllTodosByUser(ctx, sort, title) {
                 if (mode == 'inline') {
                     if (ctx.updateType == "callback_query" && typeof title != "undefined" && typeof title != ctx.i18n.t('list'))
                         ctx.answerCbQuery(title);
-                    ctx.reply(arrayReply0.join(', ').length==0?'Empty':arrayReply0.join(', '), Markup.inlineKeyboard(arrayReply1)
+                    ctx.reply(arrayReply0.join(', ').length == 0 ? ctx.i18n.t('empty') : arrayReply0.join(', '), Markup.inlineKeyboard(arrayReply1)
                         //.resize()
                         .oneTime()
                         .extra());
@@ -222,9 +215,7 @@ function findTodoById(ctx, id, callback) {
     console.log("findTodosById", id);
     Todo.findOne({ $and: [{ '_id': id }, { 'chatId': ctx.chat.id }] })
         .exec(function (err, todo) {
-            if (err) {
-                console.log("findTodosById", err);
-            }
+            if (err) console.log("findTodosById", err);
             console.log("findTodosById", todo);
             callback(err, todo);
         });
@@ -238,10 +229,27 @@ function findTodoByText(ctx, text, callback) {
     console.log("findTodosByText", text);
     Todo.findOne({ $and: [{ 'text': text }, { 'chatId': ctx.chat.id }] })
         .exec(function (err, todo) {
-            if (err) {
-                console.log("findTodosByText", err);
-            }
+            if (err) console.log("findTodosByText", err);
             console.log("findTodoByText", todo);
-            callback(err, todo);
+            if (callback) callback(err, todo);
         });
+}
+function addTodo(ctx, text, callback) {
+    if (typeof text === 'string') {
+        var textArray = text.split(',');
+        var todos = new Array();
+        for (var i in textArray) {
+            todos.push({
+                text: textArray[i].trim(),
+                done: false,
+                creator: ctx.from.first_name + ' ' + ctx.from.last_name,
+                creatorId: ctx.from.id,
+                chatId: ctx.chat.id
+            });
+        }
+        Todo.insertMany(todos, function (err, data) {
+            if (!err) console.log("added : " + text);
+            if (callback) callback(err, data);
+        });
+    } else if (callback) callback();
 }
