@@ -1,7 +1,6 @@
 greeting: 'Hello'
 deleted: 'has delete'
-button_list: '🔍 List'
-list: 'list'
 deleteAllReturn: emptied the list'
 empty: 'empty list'
 added: 'added'
+addWhat: 'add mode:'
