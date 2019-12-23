@@ -65,7 +65,7 @@ bot.command('add', (ctx) => {
         if (text.length > 0) {
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
         } else {
-            ctx.reply(ctx.i18n.t('addWhat'),Markup.forceReply().extra());
+            ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra());
             setUserModeAdd(ctx, true);
         }
     } else {
@@ -138,7 +138,11 @@ function findAllTodosByUser(ctx, sort, title) {
         .where('chatId')
         .equals(ctx.chat.id)
         .sort(sort)
-        .exec(function (err, todos) {
+        .collation({
+            locale: "en",
+            strength: 2,
+            numericOrdering: true,
+        }).exec(function (err, todos) {
             if (err) {
                 console.log(err);
             }
@@ -240,7 +244,7 @@ function setUserModeAdd(ctx, value) {
 function getUserSession(ctx) {
     if (typeof ctx.session.users === 'undefined') ctx.session.users = {};
     var user = {};
-    var id = ctx.from.id;
+    var id = getSessionKey(ctx);
     if (ctx.session.users.hasOwnProperty(id)) {
         user = ctx.session.users[id];
     } else {
@@ -255,6 +259,14 @@ function getUserSession(ctx) {
  * @param {*} datas 
  */
 function setUserSession(ctx, datas) {
-    if (typeof ctx.session.users === 'undefined') ctx.session.users = new Array();
-    ctx.session.users[ctx.from.id] = datas;
+    if (typeof ctx.session.users === 'undefined') ctx.session.users = {};
+    ctx.session.users[getSessionKey(ctx)] = datas;
+}
+function getSessionKey(ctx) {
+    if (ctx.from && ctx.chat) {
+        return `${ctx.from.id}:${ctx.chat.id}`;
+    } else if (ctx.from && ctx.inlineQuery) {
+        return `${ctx.from.id}:${ctx.from.id}`;
+    }
+    return null
 }
