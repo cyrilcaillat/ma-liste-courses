@@ -21,11 +21,17 @@ const i18n = new TelegrafI18n({
 
 const cmdList = 'list';
 const cmdAdd = 'add';
+/**
+ * Durée de la session utilisateur 20 minutes
+ */
+const sessionDelay = 20 * 60 * 1000;
+var nextPurge = Date.now() + sessionDelay;
 
 bot.use(session());
 bot.use(i18n.middleware())
 bot.use((ctx, next) => {
     console.log("ctx", ctx);//, "ctx.from", ctx.from, "ctx.chat", ctx.chat);
+    purgeUserSession(ctx);
     return next(ctx)
 });
 bot.start((ctx) => {
@@ -37,17 +43,16 @@ bot.start((ctx) => {
  */
 bot.command('delall', (ctx) => {
     console.log("command delall");
-    Todo.deleteMany({ 'chatId': ctx.chat.id }, function (err) {
-        ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
-    });
+    setUserModeDeleteAll(ctx, true);
     setUserModeAdd(ctx, false);
+    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), Markup.forceReply().extra());
 });
 /**
  * jeu de test
  */
 bot.command('test', (ctx) => {
     console.log("command test");
-    var text = "chocolat,farine,sucre,oeufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
+    var text = "chocolat,farine,PQ,sucre,œufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
     addTodo(ctx, text);
     findAllTodosByUser(ctx, 'text', 'Init list ' + text);
     setUserModeAdd(ctx, false);
@@ -117,7 +122,14 @@ bot.on('text', (ctx) => {
         else text = '';
     }
     if (text.length > 0 && isUserModeAdd(ctx))
-        addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
+        addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text); razUserSession(getUserSession(ctx)); });
+    if (text.toLowerCase() == 'y' || text.toLowerCase() == 'o') {
+        Todo.deleteMany({ 'chatId': ctx.chat.id }, function (err) {
+            ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
+            razUserSession(getUserSession(ctx));
+        });
+
+    }
 });
 bot.catch((err, ctx) => {
     console.log('Ooops, ecountered an error for ${ctx.updateType}', err)
@@ -237,6 +249,13 @@ function setUserModeAdd(ctx, value) {
     var user = getUserSession(ctx);
     user.modeAdd = value;
 }
+function isUserModeDeleteAll(ctx) {
+    return getUserSession(ctx).modeDeleteAll;
+}
+function setUserModeDeleteAll(ctx, value) {
+    var user = getUserSession(ctx);
+    user.modeDeleteAll = value;
+}
 /**
  * 
  * @param {*} ctx 
@@ -247,11 +266,21 @@ function getUserSession(ctx) {
     var id = getSessionKey(ctx);
     if (ctx.session.users.hasOwnProperty(id)) {
         user = ctx.session.users[id];
+        user.sessionExpire = Date.now() + sessionDelay;
     } else {
-        user.modeAdd = false;
+        razUserSession(user);
         ctx.session.users[id] = user;
     }
     return user;
+}
+/**
+ * 
+ * @param {*} user 
+ */
+function razUserSession(user) {
+    user.modeAdd = false;
+    user.modeDeleteAll = false;
+    user.sessionExpire = Date.now() + sessionDelay;
 }
 /**
  * 
@@ -260,8 +289,13 @@ function getUserSession(ctx) {
  */
 function setUserSession(ctx, datas) {
     if (typeof ctx.session.users === 'undefined') ctx.session.users = {};
+    datas.sessionExpire = Date.now() + sessionDelay;
     ctx.session.users[getSessionKey(ctx)] = datas;
 }
+/**
+ * Calcul de la key session
+ * @param {*} ctx 
+ */
 function getSessionKey(ctx) {
     if (ctx.from && ctx.chat) {
         return `${ctx.from.id}:${ctx.chat.id}`;
@@ -269,4 +303,19 @@ function getSessionKey(ctx) {
         return `${ctx.from.id}:${ctx.from.id}`;
     }
     return null
+}
+/**
+ * Purge des sessions untilisateurs
+ * @param {*} ctx 
+ */
+function purgeUserSession(ctx) {
+    if (nextPurge < Date.now()) {
+        if (typeof ctx.session.users === 'undefined') ctx.session.users = {};
+        for (const key in ctx.session.users) {
+            if (ctx.session.users[key].sessionExpire === 'undefined' || ctx.session.users[key].sessionExpire < Date.now()) {
+                delete ctx.session.users[key];
+            }
+        };
+        nextPurge = Date.now() + sessionDelay;
+    }
 }
