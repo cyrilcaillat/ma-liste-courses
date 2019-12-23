@@ -65,7 +65,7 @@ bot.command('add', (ctx) => {
         if (text.length > 0) {
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
         } else {
-            ctx.reply(ctx.i18n.t('addWhat'), { reply_to_message_id: ctx.message.message_id, force_reply: true, selective: true });
+            ctx.reply(ctx.i18n.t('addWhat'),Markup.forceReply().extra());
             setUserModeAdd(ctx, true);
         }
     } else {
