@@ -58,7 +58,9 @@ bot.command('test', (ctx) => {
 bot.command('add', (ctx) => {
     console.log("command add", ctx.message.text);
     var text = ctx.message.text;
-    if (text.startsWith('/add@') == false) {
+    if (text.startsWith('/add@'))
+        text = '/add';
+    if (text.startsWith('/add')) {
         text = ctx.message.text.substring(5);
         if (text.length > 0) {
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
@@ -131,7 +133,7 @@ bot.launch();
 function findAllTodosByUser(ctx, sort, title) {
     console.log("findAllTodosByUser", sort, title);
     if (sort != "date") sort = "text";
-    if (title !== cmdList) ctx.reply(title);
+    if (title !== cmdList && typeof title !== 'undefined' && title.length > 0) ctx.reply(title);
     Todo.find()
         .where('chatId')
         .equals(ctx.chat.id)
