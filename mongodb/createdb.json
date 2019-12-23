@@ -3,9 +3,20 @@ db.createUser(
   user: "todolist",
   pwd: "password",    
     roles: [
-    { role: "readWrite", db: "todolist" } 
+    { role: "readWrite", db: "todolist"
+    }
   ]
 });
-db.todos.createIndex({text:1});
-db.todos.createIndex({date:1});
-db.todos.createIndex({chatId:,1});
+db.todos.createIndex( {
+  "text": 1
+},
+{ collation: {
+                               locale : 'fr',
+                               strength : 2
+  }
+} );
+db.todos.createIndex({date: 1
+});
+db.todos.createIndex({chatId: ,
+  1
+});
