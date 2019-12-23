@@ -61,7 +61,7 @@ bot.command('add', (ctx) => {
     if (text.startsWith('/add@'))
         text = '/add';
     if (text.startsWith('/add')) {
-        text = ctx.message.text.substring(5);
+        text = text.substring(5);
         if (text.length > 0) {
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
         } else {
