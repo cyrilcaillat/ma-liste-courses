@@ -21,6 +21,7 @@ const i18n = new TelegrafI18n({
 
 const cmdList = 'list';
 const cmdAdd = 'add';
+const buttonsByRow=process.env.BUTTONS_BY_ROW?process.env.BUTTONS_BY_ROW:3;
 /**
  * Durée de la session utilisateur 20 minutes
  */
@@ -166,7 +167,7 @@ function findAllTodosByUser(ctx, sort, title) {
                 arrayReply0.push(todos[todo].text);
                 arrayReply2.push(Markup.callbackButton(todos[todo].text, todos[todo].id));
                 cpt++;
-                if (cpt != 0 && cpt % 4 == 0) {
+                if (cpt != 0 && cpt % buttonsByRow == 0) {
                     arrayReply1.push(arrayReply2);
                     arrayReply2 = new Array();
                 }
