@@ -222,7 +222,7 @@ function findTodoByText(ctx, text, callback) {
 }
 function addTodo(ctx, text, callback) {
     if (typeof text === 'string') {
-        var textArray = text.split(',');
+        var textArray = text.split(/\r\n|\r|\n|,|;/);
         var todos = new Array();
         for (var i in textArray) {
             todos.push({
