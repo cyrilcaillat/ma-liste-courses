@@ -71,7 +71,7 @@ bot.command('add', (ctx) => {
         if (text.length > 0) {
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
         } else {
-            ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra());
+            ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra({selective:true}));
             setUserModeAdd(ctx, true);
         }
     } else {
@@ -176,7 +176,7 @@ function findAllTodosByUser(ctx, sort, title) {
             //ctx.reply(arrayReply0.join(','));
             arrayReply1.push(arrayReply2);
             const reply = arrayReply0.join(', ').length == 0 ? ctx.i18n.t('empty') : arrayReply0.join(', ');
-            const markup = Markup.inlineKeyboard(arrayReply1).oneTime().extra();
+            const markup = Markup.inlineKeyboard(arrayReply1).oneTime().extra({selective:true});
             //console.log(arrayReply0.join(', ').length);
             if (reply.length > 0) {
                 if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
