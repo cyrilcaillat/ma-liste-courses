@@ -21,7 +21,7 @@ const i18n = new TelegrafI18n({
 
 const cmdList = 'list';
 const cmdAdd = 'add';
-const buttonsByRow=process.env.BUTTONS_BY_ROW?process.env.BUTTONS_BY_ROW:3;
+const buttonsByRow = process.env.BUTTONS_BY_ROW ? process.env.BUTTONS_BY_ROW : 3;
 /**
  * Durée de la session utilisateur 20 minutes
  */
@@ -71,7 +71,9 @@ bot.command('add', (ctx) => {
         if (text.length > 0) {
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
         } else {
-            ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra({selective:true}));
+            //ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra({selective:true}));
+            ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra({ selective: true, disable_notification: true }));
+            //ctx.reply(ctx.i18n.t('addWhat'), {selective:true,disable_notification:true,reply_to_message_id:ctx.message.message_id});
             setUserModeAdd(ctx, true);
         }
     } else {
@@ -176,7 +178,7 @@ function findAllTodosByUser(ctx, sort, title) {
             //ctx.reply(arrayReply0.join(','));
             arrayReply1.push(arrayReply2);
             const reply = arrayReply0.join(', ').length == 0 ? ctx.i18n.t('empty') : arrayReply0.join(', ');
-            const markup = Markup.inlineKeyboard(arrayReply1).oneTime().extra({selective:true});
+            const markup = Markup.inlineKeyboard(arrayReply1).oneTime().selective().extra();
             //console.log(arrayReply0.join(', ').length);
             if (reply.length > 0) {
                 if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
