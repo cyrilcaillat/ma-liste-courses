@@ -10,7 +10,7 @@
   "dependencies": {
     "dotenv": "^8.2.0",
     "express": "^4.17.1",
-    "mongoose": "^5.10.2",
+    "mongoose": "^5.10.5",
     "telegraf": "^3.38.0",
     "telegraf-i18n": "^6.6.0"
   },
