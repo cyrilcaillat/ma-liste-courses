@@ -53,7 +53,7 @@ bot.command('delall', (ctx) => {
  */
 bot.command('test', (ctx) => {
     console.log("command test");
-    var text = "chocolat,farine,PQ,sucre,œufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
+    var text = "chocolat,farine,PQ,sucre,,œufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
     addTodo(ctx, text);
     findAllTodosByUser(ctx, 'text', 'Init list ' + text);
     setUserModeAdd(ctx, false);
@@ -108,7 +108,6 @@ bot.on('callback_query', ctx => {
                     //ctx.reply(ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleted') + ' ' + data.text);
                     findAllTodosByUser(ctx, "text", ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleted') + ' ' + data.text);
                 }
-
             })
         } else {
             findAllTodosByUser(ctx);
@@ -166,14 +165,22 @@ function findAllTodosByUser(ctx, sort, title) {
             var arrayReply2 = new Array();
             var cpt = 0;
             for (var todo in todos) {
-                arrayReply0.push(todos[todo].text);
-                arrayReply2.push(Markup.callbackButton(todos[todo].text, todos[todo].id));
-                cpt++;
-                if (cpt != 0 && cpt % buttonsByRow == 0) {
-                    arrayReply1.push(arrayReply2);
-                    arrayReply2 = new Array();
+                if (todos[todo].text.trim().length < 1) {
+                    console.log("delete :", todos[todo]._id)
+                    Todo.deleteOne({
+                        "_id": todos[todo]._id
+                    }, function (error, todo) {
+                        console.log(error ? error : "delete ok");
+                    });
+                } else {
+                    arrayReply0.push(todos[todo].text);
+                    arrayReply2.push(Markup.callbackButton(todos[todo].text, todos[todo].id));
+                    cpt++;
+                    if (cpt != 0 && cpt % buttonsByRow == 0) {
+                        arrayReply1.push(arrayReply2);
+                        arrayReply2 = new Array();
+                    }
                 }
-
             }
             //ctx.reply(arrayReply0.join(','));
             arrayReply1.push(arrayReply2);
@@ -227,13 +234,14 @@ function addTodo(ctx, text, callback) {
         var textArray = text.split(/\r\n|\r|\n|,|;/);
         var todos = new Array();
         for (var i in textArray) {
-            todos.push({
-                text: textArray[i].trim(),
-                done: false,
-                creator: ctx.from.first_name + ' ' + ctx.from.last_name,
-                creatorId: ctx.from.id,
-                chatId: ctx.chat.id
-            });
+            if (textArray[i].trim().length > 0)
+                todos.push({
+                    text: textArray[i].trim(),
+                    done: false,
+                    creator: ctx.from.first_name + ' ' + ctx.from.last_name,
+                    creatorId: ctx.from.id,
+                    chatId: ctx.chat.id
+                });
         }
         Todo.insertMany(todos, function (err, data) {
             if (!err) console.log("added : " + text);

@@ -1,22 +1,26 @@
 db.createUser(
 {
-  user: "todolist",
-  pwd: "password",    
-    roles: [
-    { role: "readWrite", db: "todolist"
+  "user": "todolist",
+  "pwd": "todolist",
+  "roles": [
+    {
+      "role": "readWrite",
+      "db": "todolist"
     }
   ]
+});
+db.todos.createIndex({
+  "date": 1
+});
+db.todos.createIndex({
+  "chatId": 1
 });
 db.todos.createIndex( {
   "text": 1
 },
-{ collation: {
-                               locale : 'fr',
-                               strength : 2
+{
+  "collation": {
+    "locale": "fr",
+    "strength": 2
   }
 } );
-db.todos.createIndex({date: 1
-});
-db.todos.createIndex({chatId: ,
-  1
-});
