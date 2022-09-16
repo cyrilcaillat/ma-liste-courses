@@ -10,13 +10,13 @@ db.createUser(
     }
   ]
 });
-db.todos.createIndex({
+db.todolist.createIndex({
   "date": 1
 });
-db.todos.createIndex({
+db.todolist.createIndex({
   "chatId": 1
 });
-db.todos.createIndex( {
+db.todolist.createIndex( {
   "text": 1
 },
 {
