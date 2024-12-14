@@ -105,3 +105,4 @@ dist
 .tern-port
 mongodb.yml
 *.code-workspace
+.vscode/launch.json
