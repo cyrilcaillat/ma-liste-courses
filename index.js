@@ -90,15 +90,16 @@ bot.command('add', async (ctx) => {
                 await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
             } else {
                 const suggestions = await getSuggestions(ctx);
-                const replyOpts = suggestions.length > 0
-                    ? Markup.keyboard(chunk(suggestions, buttonsByRow)).oneTime().resize()
-                    : Markup.forceReply();
-                await ctx.reply(ctx.i18n.t('addWhat'), {
-                    ...replyOpts,
+                const replyOpts = {
                     disable_notification: true,
                     reply_parameters: { message_id: ctx.message.message_id },
-                }).catch((e) => console.log('reply addWhat', e.message));
+                };
+                if (suggestions.length > 0) {
+                    Object.assign(replyOpts, Markup.keyboard(chunk(suggestions, buttonsByRow)).oneTime().resize());
+                }
+                await ctx.reply(ctx.i18n.t('addWhat'), replyOpts).catch((e) => console.log('reply addWhat', e.message));
                 setUserModeAdd(ctx, true);
+                console.log('mode add ON for', getSessionKey(ctx));
             }
         } else {
             await findAllTodosByUser(ctx);
@@ -150,7 +151,7 @@ bot.on('callback_query', async (ctx) => {
 });
 bot.on('text', async (ctx) => {
     try {
-        console.log("text", ctx.update.message.text);
+        console.log("text", ctx.update.message.text, 'modeAdd=', isUserModeAdd(ctx), 'modeDelAll=', isUserModeDeleteAll(ctx));
         var text = ctx.update.message.text;
         if (text.startsWith('/')) {
             if (text.indexOf(' ') > 0)
