@@ -100,6 +100,16 @@ bot.command('add', async (ctx) => {
                 }).catch((e) => console.log('reply addWhat', e.message));
                 setUserModeAdd(ctx, true);
                 console.log('mode add ON for', getSessionKey(ctx));
+                // Suggestions historiques en boutons inline (n'interfère pas avec la saisie)
+                const suggestions = await getSuggestions(ctx);
+                if (suggestions.length > 0) {
+                    const rows = chunk(
+                        suggestions.map(s => Markup.button.callback(s, 'a:' + s.slice(0, 60))),
+                        buttonsByRow
+                    );
+                    await ctx.reply('🔁 ' + suggestions.length + ' suggestion(s)', Markup.inlineKeyboard(rows))
+                        .catch((e) => console.log('reply suggestions', e.message));
+                }
             }
         } else {
             await findAllTodosByUser(ctx);
@@ -134,6 +144,14 @@ bot.on('callback_query', async (ctx) => {
         var id = ctx.update.callback_query.data;
         console.log("callback id", id);
         await ctx.answerCbQuery().catch(() => {});
+        // Suggestion d'ajout via bouton inline (préfixe 'a:')
+        if (typeof id === 'string' && id.startsWith('a:')) {
+            const text = id.substring(2);
+            await new Promise((resolve) => addTodo(ctx, text, resolve));
+            setUserModeAdd(ctx, false);
+            await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
+            return;
+        }
         const data = await new Promise((resolve) => findTodoById(ctx, id, resolve));
         setUserModeAdd(ctx, false);
         if (data != null) {
