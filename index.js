@@ -8,6 +8,8 @@ var Todo = require('./model/TodosModel');
 //telegraf v4
 const { Telegraf, Markup, session } = require('telegraf');
 const TelegrafI18n = require('telegraf-i18n');
+const sessionStore = require('./middleware/sessionStore');
+const rateLimit = require('./middleware/rateLimit');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const i18n = new TelegrafI18n({
@@ -18,14 +20,23 @@ const i18n = new TelegrafI18n({
 
 const cmdList = 'list';
 const cmdAdd = 'add';
-const buttonsByRow = process.env.BUTTONS_BY_ROW ? process.env.BUTTONS_BY_ROW : 3;
+const buttonsByRow = parseInt(process.env.BUTTONS_BY_ROW, 10) || 3;
 /**
  * Durée de la session utilisateur 20 minutes
  */
 const sessionDelay = 20 * 60 * 1000;
 var nextPurge = Date.now() + sessionDelay;
 
-bot.use(session({ defaultSession: () => ({}) }));
+bot.use(rateLimit({ window: 3000, max: 5 }));
+bot.use(session({
+    store: sessionStore,
+    defaultSession: () => ({}),
+    getSessionKey: (ctx) => {
+        if (ctx.from && ctx.chat) return `${ctx.from.id}:${ctx.chat.id}`;
+        if (ctx.from) return `${ctx.from.id}:${ctx.from.id}`;
+        return undefined;
+    },
+}));
 bot.use(i18n.middleware())
 bot.use((ctx, next) => {
     if (process.env.DEBUG === '1') console.log("ctx", ctx);
@@ -43,7 +54,7 @@ bot.command('delall', (ctx) => {
     console.log("command delall");
     setUserModeDeleteAll(ctx, true);
     setUserModeAdd(ctx, false);
-    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), Markup.forceReply());
+    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), Markup.forceReply()).catch((e) => console.log('reply delall', e.message));
 });
 /**
  * jeu de test
@@ -73,7 +84,7 @@ bot.command('add', (ctx) => {
                     ...Markup.forceReply(),
                     selective: true,
                     disable_notification: true,
-                });
+                }).catch((e) => console.log('reply addWhat', e.message));
                 setUserModeAdd(ctx, true);
             }
         } else {
@@ -145,7 +156,7 @@ bot.on('text', (ctx) => {
     }
 });
 bot.catch((err, ctx) => {
-    console.log(`Ooops, encountered an error for ${ctx.updateType}`, err)
+    console.log(`Ooops, encountered an error for ${ctx && ctx.updateType}`, err && (err.stack || err))
 });
 bot.launch();
 
@@ -205,14 +216,22 @@ async function findAllTodosByUser(ctx, sort, title) {
         //console.log(arrayReply0.join(', ').length);
         if (reply.length > 0) {
             if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
-                ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, markup).then(function (replyCtx) { });
+                ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, markup)
+                    .catch((e) => {
+                        // message trop ancien / identique / supprimé -> on en envoie un nouveau
+                        console.log('editMessageText fallback', e.message);
+                        return ctx.reply(reply, markup).then(function (replyCtx) {
+                            ctx.session.listMessageId = replyCtx.message_id;
+                            ctx.session.listInlineMessageId = replyCtx.inline_message_id;
+                        }).catch((e2) => console.log('reply fallback', e2.message));
+                    });
             } else {
                 ctx.reply(reply, markup)
                     .then(function (replyCtx) {
-                        console.log("replyCtx", replyCtx);
                         ctx.session.listMessageId = replyCtx.message_id;
                         ctx.session.listInlineMessageId = replyCtx.inline_message_id
-                    });
+                    })
+                    .catch((e) => console.log('reply list', e.message));
             }
         }
     } catch (e) {
