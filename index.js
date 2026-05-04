@@ -55,7 +55,10 @@ bot.command('delall', (ctx) => {
     console.log("command delall");
     setUserModeDeleteAll(ctx, true);
     setUserModeAdd(ctx, false);
-    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), Markup.forceReply()).catch((e) => console.log('reply delall', e.message));
+    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), {
+        ...Markup.forceReply(),
+        reply_parameters: { message_id: ctx.message.message_id },
+    }).catch((e) => console.log('reply delall', e.message));
 });
 /**
  * jeu de test
@@ -88,9 +91,13 @@ bot.command('add', async (ctx) => {
             } else {
                 const suggestions = await getSuggestions(ctx);
                 const replyOpts = suggestions.length > 0
-                    ? Markup.keyboard(chunk(suggestions, buttonsByRow)).oneTime().resize().selective()
-                    : Markup.forceReply().selective();
-                await ctx.reply(ctx.i18n.t('addWhat'), { ...replyOpts, disable_notification: true }).catch((e) => console.log('reply addWhat', e.message));
+                    ? Markup.keyboard(chunk(suggestions, buttonsByRow)).oneTime().resize()
+                    : Markup.forceReply();
+                await ctx.reply(ctx.i18n.t('addWhat'), {
+                    ...replyOpts,
+                    disable_notification: true,
+                    reply_parameters: { message_id: ctx.message.message_id },
+                }).catch((e) => console.log('reply addWhat', e.message));
                 setUserModeAdd(ctx, true);
             }
         } else {
