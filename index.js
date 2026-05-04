@@ -98,8 +98,14 @@ bot.command('add', async (ctx) => {
                     disable_notification: true,
                     reply_parameters: { message_id: ctx.message.message_id },
                 };
+                // forceReply garantit que le prochain message tap\u00e9 sera une "reply"
+                // au message du bot -> contourne le privacy mode dans les groupes.
+                // Si on a des suggestions, on utilise un keyboard (qui passe aussi
+                // car le clic envoie un texte simple, mais privacy mode peut bloquer).
                 if (suggestions.length > 0) {
                     Object.assign(replyOpts, Markup.keyboard(chunk(suggestions, buttonsByRow)).oneTime().resize());
+                } else {
+                    Object.assign(replyOpts, Markup.forceReply());
                 }
                 await ctx.reply(ctx.i18n.t('addWhat'), replyOpts).catch((e) => console.log('reply addWhat', e.message));
                 setUserModeAdd(ctx, true);
