@@ -146,22 +146,26 @@ bot.command('lists', async (ctx) => {
     console.log('command lists');
     setUserModeAdd(ctx, false);
     const current = await getCurrentList(ctx.chat.id);
+    const known = await getKnownLists(ctx.chat.id);
     const groups = await Todo.aggregate([
         { $match: { chatId: ctx.chat.id } },
         { $group: { _id: { $ifNull: ['$listName', 'default'] }, count: { $sum: 1 } } },
         { $sort: { count: -1 } },
     ]);
-    // Inclure la liste active même si elle est vide
-    if (!groups.find(g => g._id === current)) groups.push({ _id: current, count: 0 });
-    if (groups.length === 0) {
+    const counts = new Map(groups.map(g => [g._id, g.count]));
+    // Union: listes connues + listes ayant des produits
+    const names = Array.from(new Set([...known, ...counts.keys(), current]));
+    names.sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0));
+    if (names.length === 0) {
         return ctx.reply('Aucune liste. Tapez /add pour commencer.').catch(() => {});
     }
     const lines = ['📋 Listes du chat :'];
     const buttons = [];
-    for (const g of groups) {
-        const marker = g._id === current ? '▶' : '  ';
-        lines.push(`${marker} ${g._id} (${g.count})`);
-        buttons.push(Markup.button.callback((g._id === current ? '▶ ' : '') + g._id, 'l:' + g._id.slice(0, 60)));
+    for (const n of names) {
+        const c = counts.get(n) || 0;
+        const marker = n === current ? '▶' : '  ';
+        lines.push(`${marker} ${n} (${c})`);
+        buttons.push(Markup.button.callback((n === current ? '▶ ' : '') + n, 'l:' + n.slice(0, 60)));
     }
     await ctx.reply(lines.join('\n'), Markup.inlineKeyboard(chunk(buttons, 2))).catch((e) => console.log('reply lists', e.message));
 });
@@ -196,6 +200,7 @@ bot.command('dellist', async (ctx) => {
     const name = normalizeListName(arg);
     if (!name) return ctx.reply('Usage: /dellist <nom>').catch(() => {});
     const result = await Todo.deleteMany({ chatId: ctx.chat.id, listName: name });
+    await forgetList(ctx.chat.id, name);
     const current = await getCurrentList(ctx.chat.id);
     if (current === name) await setCurrentList(ctx.chat.id, 'default');
     await ctx.reply(`🗑️ Liste "${name}" supprimée (${result.deletedCount} produit(s))`).catch(() => {});
@@ -210,6 +215,7 @@ bot.command('rename', async (ctx) => {
     const to   = normalizeListName(args[1] || '');
     if (!from || !to) return ctx.reply('Usage: /rename <ancien> <nouveau>').catch(() => {});
     const result = await Todo.updateMany({ chatId: ctx.chat.id, listName: from }, { $set: { listName: to } });
+    await renameKnownList(ctx.chat.id, from, to);
     const current = await getCurrentList(ctx.chat.id);
     if (current === from) await setCurrentList(ctx.chat.id, to);
     await ctx.reply(`✏️ ${from} → ${to} (${result.modifiedCount} produit(s))`).catch(() => {});
@@ -500,7 +506,22 @@ async function getCurrentList(chatId) {
     return (s && s.currentList) || 'default';
 }
 async function setCurrentList(chatId, currentList) {
-    await ChatState.updateOne({ chatId }, { $set: { currentList } }, { upsert: true });
+    await ChatState.updateOne(
+        { chatId },
+        { $set: { currentList }, $addToSet: { knownLists: currentList } },
+        { upsert: true }
+    );
+}
+async function getKnownLists(chatId) {
+    const s = await ChatState.findOne({ chatId }).lean();
+    return (s && s.knownLists && s.knownLists.length > 0) ? s.knownLists : ['default'];
+}
+async function forgetList(chatId, name) {
+    await ChatState.updateOne({ chatId }, { $pull: { knownLists: name } });
+}
+async function renameKnownList(chatId, from, to) {
+    await ChatState.updateOne({ chatId }, { $pull: { knownLists: from } });
+    await ChatState.updateOne({ chatId }, { $addToSet: { knownLists: to } });
 }
 /**
  * Valide et normalise un nom de liste : a-z 0-9 _ - (1-30).
