@@ -62,14 +62,18 @@ bot.command('delall', (ctx) => {
 bot.command('test', (ctx) => {
     console.log("command test");
     var text = "chocolat,farine,PQ,sucre,,œufs,boeuf,poulet,saumon,levure,salade,coca,jus de fruits,eau pétillante,desserts,glace vanille,sorbets";
-    addTodo(ctx, text);
-    findAllTodosByUser(ctx, 'text', 'Init list ' + text);
     setUserModeAdd(ctx, false);
+    return new Promise((resolve) => {
+        addTodo(ctx, text, async () => {
+            await findAllTodosByUser(ctx, 'text', 'Init list ' + text);
+            resolve();
+        });
+    });
 });
 /**
  * Commande ajout
  */
-bot.command('add', (ctx) => {
+bot.command('add', async (ctx) => {
     try {
         console.log("command add", ctx.message.text);
         var text = ctx.message.text;
@@ -78,9 +82,10 @@ bot.command('add', (ctx) => {
         if (text.startsWith('/add')) {
             text = text.substring(5);
             if (text.length > 0) {
-                addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
+                await new Promise((resolve) => addTodo(ctx, text, resolve));
+                await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
             } else {
-                ctx.reply(ctx.i18n.t('addWhat'), {
+                await ctx.reply(ctx.i18n.t('addWhat'), {
                     ...Markup.forceReply(),
                     selective: true,
                     disable_notification: true,
@@ -88,7 +93,7 @@ bot.command('add', (ctx) => {
                 setUserModeAdd(ctx, true);
             }
         } else {
-            findAllTodosByUser(ctx);
+            await findAllTodosByUser(ctx);
         }
     } catch (e) {
         console.log(e);
@@ -97,43 +102,36 @@ bot.command('add', (ctx) => {
 /**
  * Commande /list
  */
-bot.command('list', (ctx) => {
+bot.command('list', async (ctx) => {
     console.log("command list");
     setUserModeAdd(ctx, false);
-    findAllTodosByUser(ctx, ctx.message.text.substring(6), cmdList);
+    await findAllTodosByUser(ctx, ctx.message.text.substring(6), cmdList);
 });
 /**
  * La suppression se fait par callback sur l'id
  */
-bot.on('callback_query', ctx => {
+bot.on('callback_query', async (ctx) => {
     try {
-        // get info from callback_query object
         var id = ctx.update.callback_query.data;
         console.log("callback id", id);
-        findTodoById(ctx, id, function (data) {
-            if (data != null) {
-                console.log("callback id", data._id);
-                Todo.deleteOne({
-                    "_id": data._id
-                }).then(function (result) {
-                    if (result.acknowledged) {
-                        //ctx.reply(ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleted') + ' ' + data.text);
-                        findAllTodosByUser(ctx, "text", ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleted') + ' ' + data.text);
-                    } else {
-                        ctx.reply(result);
-                        console.log(result);
-                    }
-                })
-            } else {
-                findAllTodosByUser(ctx);
-            }
-        });
+        const data = await new Promise((resolve) => findTodoById(ctx, id, resolve));
         setUserModeAdd(ctx, false);
+        if (data != null) {
+            console.log("callback id", data._id);
+            const result = await Todo.deleteOne({ "_id": data._id });
+            if (result.acknowledged) {
+                await findAllTodosByUser(ctx, "text", ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleted') + ' ' + data.text);
+            } else {
+                await ctx.reply(String(result)).catch((e) => console.log('reply cb', e.message));
+            }
+        } else {
+            await findAllTodosByUser(ctx);
+        }
     } catch (e) {
         console.log(e);
     }
 });
-bot.on('text', (ctx) => {
+bot.on('text', async (ctx) => {
     try {
         console.log("text", ctx.update.message.text);
         var text = ctx.update.message.text;
@@ -142,14 +140,15 @@ bot.on('text', (ctx) => {
                 text = text.substring(text.indexOf(' ') + 1);
             else text = '';
         }
-        if (text.length > 0 && isUserModeAdd(ctx))
-            addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text); razUserSession(getUserSession(ctx)); });
+        if (text.length > 0 && isUserModeAdd(ctx)) {
+            await new Promise((resolve) => addTodo(ctx, text, resolve));
+            await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
+            razUserSession(getUserSession(ctx));
+        }
         if (isUserModeDeleteAll(ctx) && (text.toLowerCase() == 'y' || text.toLowerCase() == 'o')) {
-            Todo.deleteMany({ 'chatId': ctx.chat.id }).then(() => {
-                ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
-                razUserSession(getUserSession(ctx));
-            }).catch((err) => console.log(err));
-
+            await Todo.deleteMany({ 'chatId': ctx.chat.id });
+            await ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn')).catch((e) => console.log('reply delall', e.message));
+            razUserSession(getUserSession(ctx));
         }
     } catch (e) {
         console.log(e);
@@ -216,22 +215,23 @@ async function findAllTodosByUser(ctx, sort, title) {
         //console.log(arrayReply0.join(', ').length);
         if (reply.length > 0) {
             if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
-                ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, markup)
-                    .catch((e) => {
-                        // message trop ancien / identique / supprimé -> on en envoie un nouveau
-                        console.log('editMessageText fallback', e.message);
-                        return ctx.reply(reply, markup).then(function (replyCtx) {
-                            ctx.session.listMessageId = replyCtx.message_id;
-                            ctx.session.listInlineMessageId = replyCtx.inline_message_id;
-                        }).catch((e2) => console.log('reply fallback', e2.message));
-                    });
-            } else {
-                ctx.reply(reply, markup)
-                    .then(function (replyCtx) {
+                try {
+                    await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, markup);
+                } catch (e) {
+                    // message trop ancien / identique / supprimé -> on en envoie un nouveau
+                    console.log('editMessageText fallback', e.message);
+                    try {
+                        const replyCtx = await ctx.reply(reply, markup);
                         ctx.session.listMessageId = replyCtx.message_id;
-                        ctx.session.listInlineMessageId = replyCtx.inline_message_id
-                    })
-                    .catch((e) => console.log('reply list', e.message));
+                        ctx.session.listInlineMessageId = replyCtx.inline_message_id;
+                    } catch (e2) { console.log('reply fallback', e2.message); }
+                }
+            } else {
+                try {
+                    const replyCtx = await ctx.reply(reply, markup);
+                    ctx.session.listMessageId = replyCtx.message_id;
+                    ctx.session.listInlineMessageId = replyCtx.inline_message_id;
+                } catch (e) { console.log('reply list', e.message); }
             }
         }
     } catch (e) {
