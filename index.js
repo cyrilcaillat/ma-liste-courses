@@ -5,6 +5,7 @@ const path = require("path");
 var db = require('./config/database')
 //modèle todo
 var Todo = require('./model/TodosModel');
+var History = require('./model/HistoryModel');
 //telegraf v4
 const { Telegraf, Markup, session } = require('telegraf');
 const TelegrafI18n = require('telegraf-i18n');
@@ -85,11 +86,11 @@ bot.command('add', async (ctx) => {
                 await new Promise((resolve) => addTodo(ctx, text, resolve));
                 await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
             } else {
-                await ctx.reply(ctx.i18n.t('addWhat'), {
-                    ...Markup.forceReply(),
-                    selective: true,
-                    disable_notification: true,
-                }).catch((e) => console.log('reply addWhat', e.message));
+                const suggestions = await getSuggestions(ctx);
+                const replyOpts = suggestions.length > 0
+                    ? Markup.keyboard(chunk(suggestions, buttonsByRow)).oneTime().resize().selective()
+                    : Markup.forceReply().selective();
+                await ctx.reply(ctx.i18n.t('addWhat'), { ...replyOpts, disable_notification: true }).catch((e) => console.log('reply addWhat', e.message));
                 setUserModeAdd(ctx, true);
             }
         } else {
@@ -108,22 +109,31 @@ bot.command('list', async (ctx) => {
     await findAllTodosByUser(ctx, ctx.message.text.substring(6), cmdList);
 });
 /**
+ * Vide le panier (produits cochés)
+ */
+bot.command('clean', async (ctx) => {
+    console.log("command clean");
+    setUserModeAdd(ctx, false);
+    const result = await Todo.deleteMany({ chatId: ctx.chat.id, done: true });
+    const who = ctx.from.first_name + ' ' + ctx.from.last_name;
+    await findAllTodosByUser(ctx, 'text', `${who} ${ctx.i18n.t('cleanReturn')} (${result.deletedCount})`);
+});
+/**
  * La suppression se fait par callback sur l'id
  */
 bot.on('callback_query', async (ctx) => {
     try {
         var id = ctx.update.callback_query.data;
         console.log("callback id", id);
+        await ctx.answerCbQuery().catch(() => {});
         const data = await new Promise((resolve) => findTodoById(ctx, id, resolve));
         setUserModeAdd(ctx, false);
         if (data != null) {
-            console.log("callback id", data._id);
-            const result = await Todo.deleteOne({ "_id": data._id });
-            if (result.acknowledged) {
-                await findAllTodosByUser(ctx, "text", ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name + ' ' + ctx.i18n.t('deleted') + ' ' + data.text);
-            } else {
-                await ctx.reply(String(result)).catch((e) => console.log('reply cb', e.message));
-            }
+            const newDone = !data.done;
+            await Todo.updateOne({ _id: data._id }, { $set: { done: newDone, doneAt: newDone ? new Date() : null } });
+            const who = ctx.update.callback_query.from.first_name + ' ' + ctx.update.callback_query.from.last_name;
+            const verb = newDone ? ctx.i18n.t('checked') : ctx.i18n.t('unchecked');
+            await findAllTodosByUser(ctx, "text", `${who} ${verb} ${data.text}`);
         } else {
             await findAllTodosByUser(ctx);
         }
@@ -173,52 +183,67 @@ async function findAllTodosByUser(ctx, sort, title) {
     try {
         console.log("findAllTodosByUser", sort, title);
         if (sort != "date") sort = "text";
-        if (title !== cmdList && typeof title !== 'undefined' && title.length > 0) ctx.reply(title);
+        if (title !== cmdList && typeof title !== 'undefined' && title.length > 0) ctx.reply(title).catch((e) => console.log('reply title', e.message));
         const query = { "chatId": ctx.chat.id };
         const cursor = Todo.find(query).sort(sort).collation({
             locale: "en",
             strength: 2,
             numericOrdering: true,
         });
-        // Print a message if no documents were found
         if ((await Todo.countDocuments(query)) === 0) {
             console.log("No documents found!");
         }
-        //tableau listes des produits format texte
-        var arrayReply0 = new Array();
-        //tableau boutons par ligne
-        var arrayReply1 = new Array();
-        //tableau bouton en colonne
-        var arrayReply2 = new Array();
-        var cpt = 0;
+        const todoItems = [];
+        const doneItems = [];
         for await (const todo of cursor) {
-            console.dir(todo);
             if (todo.text.trim().length < 1) {
-                console.log("delete :", todo._id)
+                console.log("delete empty :", todo._id);
                 Todo.deleteOne({ "_id": todo._id })
                     .then(() => console.log("delete ok"))
                     .catch((error) => console.log(error));
+            } else if (todo.done) {
+                doneItems.push(todo);
             } else {
-                arrayReply0.push(todo.text);
-                arrayReply2.push(Markup.button.callback(todo.text, todo.id));
-                cpt++;
-                if (cpt != 0 && cpt % buttonsByRow == 0) {
-                    arrayReply1.push(arrayReply2);
-                    arrayReply2 = new Array();
-                }
+                todoItems.push(todo);
             }
         }
-        //ctx.reply(arrayReply0.join(','));
-        arrayReply1.push(arrayReply2);
-        const reply = arrayReply0.join(', ').length == 0 ? ctx.i18n.t('empty') : arrayReply0.join(', ');
-        const markup = Markup.inlineKeyboard(arrayReply1);
-        //console.log(arrayReply0.join(', ').length);
+        // Construction des boutons : à acheter d'abord, puis panier (préfixés ✓)
+        const buttonsRows = [];
+        let row = [];
+        const pushRow = () => { if (row.length) { buttonsRows.push(row); row = []; } };
+        for (const t of todoItems) {
+            row.push(Markup.button.callback(t.text, t.id));
+            if (row.length >= buttonsByRow) pushRow();
+        }
+        if (todoItems.length && doneItems.length) pushRow(); // séparateur visuel
+        for (const t of doneItems) {
+            row.push(Markup.button.callback('✓ ' + t.text, t.id));
+            if (row.length >= buttonsByRow) pushRow();
+        }
+        pushRow();
+        // Construction du texte
+        let reply;
+        if (todoItems.length === 0 && doneItems.length === 0) {
+            reply = ctx.i18n.t('empty');
+        } else {
+            const parts = [];
+            if (todoItems.length > 0) {
+                parts.push(`${ctx.i18n.t('toBuy')} (${todoItems.length})\n` + todoItems.map(t => t.text).join(', '));
+            }
+            if (doneItems.length > 0) {
+                parts.push(`${ctx.i18n.t('inBasket')} (${doneItems.length})\n` + doneItems.map(t => '~' + t.text + '~').join(', '));
+            }
+            if (todoItems.length === 0 && doneItems.length > 0) {
+                parts.push(ctx.i18n.t('allChecked'));
+            }
+            reply = parts.join('\n\n');
+        }
+        const markup = Markup.inlineKeyboard(buttonsRows);
         if (reply.length > 0) {
             if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
                 try {
                     await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, markup);
                 } catch (e) {
-                    // message trop ancien / identique / supprimé -> on en envoie un nouveau
                     console.log('editMessageText fallback', e.message);
                     try {
                         const replyCtx = await ctx.reply(reply, markup);
@@ -236,7 +261,6 @@ async function findAllTodosByUser(ctx, sort, title) {
         }
     } catch (e) {
         console.error(e);
-    } finally {
     }
 }
 /**
@@ -280,24 +304,60 @@ function addTodo(ctx, text, callback) {
         if (typeof text === 'string') {
             var textArray = text.split(/\r\n|\r|\n|,|;/);
             var todos = new Array();
+            var historyOps = new Array();
             for (var i in textArray) {
-                if (textArray[i].trim().length > 0)
+                const t = textArray[i].trim();
+                if (t.length > 0) {
                     todos.push({
-                        text: textArray[i].trim(),
+                        text: t,
                         done: false,
                         creator: ctx.from.first_name + ' ' + ctx.from.last_name,
                         creatorId: ctx.from.id,
                         chatId: ctx.chat.id
                     });
+                    historyOps.push({
+                        updateOne: {
+                            filter: { chatId: ctx.chat.id, text: t },
+                            update: { $inc: { count: 1 }, $set: { lastUsed: new Date() } },
+                            upsert: true,
+                        }
+                    });
+                }
             }
             Todo.insertMany(todos).then(function (datas) {
                 console.log("added : " + text);
+                if (historyOps.length > 0) {
+                    History.bulkWrite(historyOps).catch((e) => console.log('history bulk', e.message));
+                }
                 if (callback) callback(datas);
             });
         } else if (callback) callback();
     } catch (e) {
         console.log(e);
     }
+}
+/**
+ * Renvoie le top des produits historiques pour ce chat,
+ * en excluant ceux déjà dans la liste active (non done).
+ */
+async function getSuggestions(ctx, limit = 12) {
+    try {
+        const active = await Todo.find({ chatId: ctx.chat.id, done: false }).select('text').lean();
+        const activeSet = new Set(active.map(t => t.text));
+        const top = await History.find({ chatId: ctx.chat.id })
+            .sort({ count: -1, lastUsed: -1 })
+            .limit(limit * 2)
+            .lean();
+        return top.map(h => h.text).filter(t => !activeSet.has(t)).slice(0, limit);
+    } catch (e) {
+        console.log('getSuggestions', e.message);
+        return [];
+    }
+}
+function chunk(arr, size) {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
 }
 /**
  * 
