@@ -170,8 +170,18 @@ bot.command('newlist', async (ctx) => {
     console.log('command newlist');
     setUserModeAdd(ctx, false);
     const arg = ctx.message.text.replace(/^\/newlist(?:@\S+)?\s*/, '').trim();
+    if (arg.length === 0) {
+        // Pas d'argument : on attend le nom dans le prochain message
+        setUserModeNewList(ctx, true);
+        await ctx.reply('Nom de la nouvelle liste ? (a-z 0-9 _ - max 30)', {
+            ...Markup.forceReply(),
+            disable_notification: true,
+            reply_parameters: { message_id: ctx.message.message_id },
+        }).catch((e) => console.log('reply newlist prompt', e.message));
+        return;
+    }
     const name = normalizeListName(arg);
-    if (!name) return ctx.reply('Usage: /newlist <nom> (a-z 0-9 _ - max 30)').catch(() => {});
+    if (!name) return ctx.reply('Nom invalide. Utilisez a-z 0-9 _ - (max 30)').catch(() => {});
     await setCurrentList(ctx.chat.id, name);
     await findAllTodosByUser(ctx, 'text', `✨ Nouvelle liste active : ${name}`);
 });
@@ -259,6 +269,14 @@ bot.on('text', async (ctx) => {
             if (text.indexOf(' ') > 0)
                 text = text.substring(text.indexOf(' ') + 1);
             else text = '';
+        }
+        if (text.length > 0 && isUserModeNewList(ctx)) {
+            const name = normalizeListName(text);
+            setUserModeNewList(ctx, false);
+            if (!name) return ctx.reply('Nom invalide. Utilisez a-z 0-9 _ - (max 30)').catch(() => {});
+            await setCurrentList(ctx.chat.id, name);
+            await findAllTodosByUser(ctx, 'text', `✨ Nouvelle liste active : ${name}`);
+            return;
         }
         if (text.length > 0 && isUserModeAdd(ctx)) {
             await new Promise((resolve) => addTodo(ctx, text, resolve));
@@ -533,6 +551,13 @@ function setUserModeDeleteAll(ctx, value) {
     var user = getUserSession(ctx);
     user.modeDeleteAll = value;
 }
+function isUserModeNewList(ctx) {
+    return getUserSession(ctx).modeNewList;
+}
+function setUserModeNewList(ctx, value) {
+    var user = getUserSession(ctx);
+    user.modeNewList = value;
+}
 /**
  * 
  * @param {*} ctx 
@@ -561,6 +586,7 @@ function getUserSession(ctx) {
 function razUserSession(user) {
     user.modeAdd = false;
     user.modeDeleteAll = false;
+    user.modeNewList = false;
     user.sessionExpire = Date.now() + sessionDelay;
 }
 /**
