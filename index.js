@@ -29,6 +29,10 @@ const sessionDelay = 20 * 60 * 1000;
 var nextPurge = Date.now() + sessionDelay;
 
 bot.use(rateLimit({ window: 3000, max: 5 }));
+bot.use((ctx, next) => {
+    console.log('update', ctx.updateType, ctx.message ? ctx.message.text : (ctx.callbackQuery ? 'cb:' + ctx.callbackQuery.data : ''));
+    return next();
+});
 bot.use(session({
     store: sessionStore,
     defaultSession: () => ({}),
