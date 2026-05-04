@@ -25,7 +25,7 @@ const buttonsByRow = process.env.BUTTONS_BY_ROW ? process.env.BUTTONS_BY_ROW : 3
 const sessionDelay = 20 * 60 * 1000;
 var nextPurge = Date.now() + sessionDelay;
 
-bot.use(session());
+bot.use(session({ defaultSession: () => ({}) }));
 bot.use(i18n.middleware())
 bot.use((ctx, next) => {
     if (process.env.DEBUG === '1') console.log("ctx", ctx);
