@@ -5,12 +5,9 @@ const path = require("path");
 var db = require('./config/database')
 //modèle todo
 var Todo = require('./model/TodosModel');
-//telegraf
-const Telegraf = require('telegraf');
-const session = require('telegraf/session');
+//telegraf v4
+const { Telegraf, Markup, session } = require('telegraf');
 const TelegrafI18n = require('telegraf-i18n');
-const Extra = require('telegraf/extra');
-const Markup = require('telegraf/markup');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const i18n = new TelegrafI18n({
@@ -46,7 +43,7 @@ bot.command('delall', (ctx) => {
     console.log("command delall");
     setUserModeDeleteAll(ctx, true);
     setUserModeAdd(ctx, false);
-    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), Markup.forceReply().extra());
+    ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), Markup.forceReply());
 });
 /**
  * jeu de test
@@ -72,9 +69,11 @@ bot.command('add', (ctx) => {
             if (text.length > 0) {
                 addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text) });
             } else {
-                //ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra({selective:true}));
-                ctx.reply(ctx.i18n.t('addWhat'), Markup.forceReply().extra({ selective: true, disable_notification: true }));
-                //ctx.reply(ctx.i18n.t('addWhat'), {selective:true,disable_notification:true,reply_to_message_id:ctx.message.message_id});
+                ctx.reply(ctx.i18n.t('addWhat'), {
+                    ...Markup.forceReply(),
+                    selective: true,
+                    disable_notification: true,
+                });
                 setUserModeAdd(ctx, true);
             }
         } else {
@@ -135,10 +134,10 @@ bot.on('text', (ctx) => {
         if (text.length > 0 && isUserModeAdd(ctx))
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text); razUserSession(getUserSession(ctx)); });
         if (isUserModeDeleteAll(ctx) && (text.toLowerCase() == 'y' || text.toLowerCase() == 'o')) {
-            Todo.deleteMany({ 'chatId': ctx.chat.id }, function (err) {
+            Todo.deleteMany({ 'chatId': ctx.chat.id }).then(() => {
                 ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
                 razUserSession(getUserSession(ctx));
-            });
+            }).catch((err) => console.log(err));
 
         }
     } catch (e) {
@@ -186,14 +185,12 @@ async function findAllTodosByUser(ctx, sort, title) {
             console.dir(todo);
             if (todo.text.trim().length < 1) {
                 console.log("delete :", todo._id)
-                Todo.deleteOne({
-                    "_id": todo._id
-                }, function (error, todo) {
-                    console.log(error ? error : "delete ok");
-                });
+                Todo.deleteOne({ "_id": todo._id })
+                    .then(() => console.log("delete ok"))
+                    .catch((error) => console.log(error));
             } else {
                 arrayReply0.push(todo.text);
-                arrayReply2.push(Markup.callbackButton(todo.text, todo.id));
+                arrayReply2.push(Markup.button.callback(todo.text, todo.id));
                 cpt++;
                 if (cpt != 0 && cpt % buttonsByRow == 0) {
                     arrayReply1.push(arrayReply2);
@@ -204,7 +201,7 @@ async function findAllTodosByUser(ctx, sort, title) {
         //ctx.reply(arrayReply0.join(','));
         arrayReply1.push(arrayReply2);
         const reply = arrayReply0.join(', ').length == 0 ? ctx.i18n.t('empty') : arrayReply0.join(', ');
-        const markup = Markup.inlineKeyboard(arrayReply1).oneTime().selective().extra();
+        const markup = Markup.inlineKeyboard(arrayReply1);
         //console.log(arrayReply0.join(', ').length);
         if (reply.length > 0) {
             if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
