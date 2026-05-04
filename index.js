@@ -49,6 +49,28 @@ bot.use((ctx, next) => {
     purgeUserSession(ctx);
     return next(ctx)
 });
+/**
+ * Vérifie que l'utilisateur est admin/creator du chat (ou en chat privé).
+ * Utilisé pour les commandes destructrices.
+ */
+async function ensureAdmin(ctx) {
+    try {
+        if (!ctx.chat) return false;
+        if (ctx.chat.type === 'private') return true;
+        const member = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
+        return member && (member.status === 'creator' || member.status === 'administrator');
+    } catch (e) {
+        console.log('ensureAdmin', e.message);
+        return false;
+    }
+}
+async function denyIfNotAdmin(ctx) {
+    const ok = await ensureAdmin(ctx);
+    if (!ok) {
+        await ctx.reply('⛔ Réservé aux administrateurs du groupe.').catch(() => {});
+    }
+    return ok;
+}
 bot.start((ctx) => {
     ctx.reply('Welcome!')
 });
@@ -56,8 +78,9 @@ bot.start((ctx) => {
 /**
  * Commande d'ajout. Ajout multiples avec séparateur ','
  */
-bot.command('delall', (ctx) => {
+bot.command('delall', async (ctx) => {
     console.log("command delall");
+    if (!(await denyIfNotAdmin(ctx))) return;
     setUserModeDeleteAll(ctx, true);
     setUserModeAdd(ctx, false);
     ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), {
@@ -196,6 +219,7 @@ bot.command('newlist', async (ctx) => {
  */
 bot.command('dellist', async (ctx) => {
     console.log('command dellist');
+    if (!(await denyIfNotAdmin(ctx))) return;
     setUserModeAdd(ctx, false);
     const arg = ctx.message.text.replace(/^\/dellist(?:@\S+)?\s*/, '').trim();
     if (arg.length === 0) {
@@ -216,6 +240,7 @@ bot.command('dellist', async (ctx) => {
  */
 bot.command('rename', async (ctx) => {
     console.log('command rename');
+    if (!(await denyIfNotAdmin(ctx))) return;
     setUserModeAdd(ctx, false);
     const args = ctx.message.text.replace(/^\/rename(?:@\S+)?\s*/, '').trim().split(/\s+/).filter(Boolean);
     if (args.length === 0) {
