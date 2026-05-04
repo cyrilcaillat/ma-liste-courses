@@ -196,29 +196,57 @@ bot.command('newlist', async (ctx) => {
  */
 bot.command('dellist', async (ctx) => {
     console.log('command dellist');
+    setUserModeAdd(ctx, false);
     const arg = ctx.message.text.replace(/^\/dellist(?:@\S+)?\s*/, '').trim();
+    if (arg.length === 0) {
+        setUserModeDelList(ctx, true);
+        await ctx.reply('Nom de la liste à supprimer ?', {
+            ...Markup.forceReply(),
+            disable_notification: true,
+            reply_parameters: { message_id: ctx.message.message_id },
+        }).catch((e) => console.log('reply dellist prompt', e.message));
+        return;
+    }
     const name = normalizeListName(arg);
     if (!name) return ctx.reply('Usage: /dellist <nom>').catch(() => {});
-    const result = await Todo.deleteMany({ chatId: ctx.chat.id, listName: name });
-    await forgetList(ctx.chat.id, name);
-    const current = await getCurrentList(ctx.chat.id);
-    if (current === name) await setCurrentList(ctx.chat.id, 'default');
-    await ctx.reply(`🗑️ Liste "${name}" supprimée (${result.deletedCount} produit(s))`).catch(() => {});
+    await doDelList(ctx, name);
 });
 /**
  * /rename <ancien> <nouveau>
  */
 bot.command('rename', async (ctx) => {
     console.log('command rename');
-    const args = ctx.message.text.replace(/^\/rename(?:@\S+)?\s*/, '').trim().split(/\s+/);
-    const from = normalizeListName(args[0] || '');
-    const to   = normalizeListName(args[1] || '');
+    setUserModeAdd(ctx, false);
+    const args = ctx.message.text.replace(/^\/rename(?:@\S+)?\s*/, '').trim().split(/\s+/).filter(Boolean);
+    if (args.length === 0) {
+        // Mode interactif: on demande l'ancien nom, puis le nouveau
+        const user = getUserSession(ctx);
+        user.modeRename = 'from';
+        user.renameFrom = null;
+        await ctx.reply('Nom de la liste à renommer ?', {
+            ...Markup.forceReply(),
+            disable_notification: true,
+            reply_parameters: { message_id: ctx.message.message_id },
+        }).catch((e) => console.log('reply rename prompt', e.message));
+        return;
+    }
+    if (args.length === 1) {
+        const from = normalizeListName(args[0]);
+        if (!from) return ctx.reply('Nom invalide').catch(() => {});
+        const user = getUserSession(ctx);
+        user.modeRename = 'to';
+        user.renameFrom = from;
+        await ctx.reply(`Nouveau nom pour "${from}" ?`, {
+            ...Markup.forceReply(),
+            disable_notification: true,
+            reply_parameters: { message_id: ctx.message.message_id },
+        }).catch((e) => console.log('reply rename prompt2', e.message));
+        return;
+    }
+    const from = normalizeListName(args[0]);
+    const to   = normalizeListName(args[1]);
     if (!from || !to) return ctx.reply('Usage: /rename <ancien> <nouveau>').catch(() => {});
-    const result = await Todo.updateMany({ chatId: ctx.chat.id, listName: from }, { $set: { listName: to } });
-    await renameKnownList(ctx.chat.id, from, to);
-    const current = await getCurrentList(ctx.chat.id);
-    if (current === from) await setCurrentList(ctx.chat.id, to);
-    await ctx.reply(`✏️ ${from} → ${to} (${result.modifiedCount} produit(s))`).catch(() => {});
+    await doRename(ctx, from, to);
 });
 /**
  * Vide le panier (produits cochés)
@@ -284,6 +312,38 @@ bot.on('text', async (ctx) => {
             if (!name) return ctx.reply('Nom invalide. Utilisez a-z 0-9 _ - (max 30)').catch(() => {});
             await setCurrentList(ctx.chat.id, name);
             await findAllTodosByUser(ctx, 'text', `✨ Nouvelle liste active : ${name}`);
+            return;
+        }
+        if (text.length > 0 && isUserModeDelList(ctx)) {
+            setUserModeDelList(ctx, false);
+            const name = normalizeListName(text);
+            if (!name) return ctx.reply('Nom invalide').catch(() => {});
+            await doDelList(ctx, name);
+            return;
+        }
+        const userSess = getUserSession(ctx);
+        if (text.length > 0 && userSess.modeRename === 'from') {
+            const from = normalizeListName(text);
+            if (!from) {
+                userSess.modeRename = false;
+                return ctx.reply('Nom invalide').catch(() => {});
+            }
+            userSess.modeRename = 'to';
+            userSess.renameFrom = from;
+            await ctx.reply(`Nouveau nom pour "${from}" ?`, {
+                ...Markup.forceReply(),
+                disable_notification: true,
+                reply_parameters: { message_id: ctx.message.message_id },
+            }).catch(() => {});
+            return;
+        }
+        if (text.length > 0 && userSess.modeRename === 'to') {
+            const to = normalizeListName(text);
+            const from = userSess.renameFrom;
+            userSess.modeRename = false;
+            userSess.renameFrom = null;
+            if (!to || !from) return ctx.reply('Nom invalide').catch(() => {});
+            await doRename(ctx, from, to);
             return;
         }
         if (text.length > 0 && isUserModeAdd(ctx)) {
@@ -581,6 +641,30 @@ function setUserModeNewList(ctx, value) {
     var user = getUserSession(ctx);
     user.modeNewList = value;
 }
+function isUserModeDelList(ctx) {
+    return getUserSession(ctx).modeDelList;
+}
+function setUserModeDelList(ctx, value) {
+    var user = getUserSession(ctx);
+    user.modeDelList = value;
+}
+/**
+ * Effectue la suppression d'une liste et notifie l'utilisateur.
+ */
+async function doDelList(ctx, name) {
+    const result = await Todo.deleteMany({ chatId: ctx.chat.id, listName: name });
+    await forgetList(ctx.chat.id, name);
+    const current = await getCurrentList(ctx.chat.id);
+    if (current === name) await setCurrentList(ctx.chat.id, 'default');
+    await ctx.reply(`🗑️ Liste "${name}" supprimée (${result.deletedCount} produit(s))`).catch(() => {});
+}
+async function doRename(ctx, from, to) {
+    const result = await Todo.updateMany({ chatId: ctx.chat.id, listName: from }, { $set: { listName: to } });
+    await renameKnownList(ctx.chat.id, from, to);
+    const current = await getCurrentList(ctx.chat.id);
+    if (current === from) await setCurrentList(ctx.chat.id, to);
+    await ctx.reply(`✏️ ${from} → ${to} (${result.modifiedCount} produit(s))`).catch(() => {});
+}
 /**
  * 
  * @param {*} ctx 
@@ -610,6 +694,9 @@ function razUserSession(user) {
     user.modeAdd = false;
     user.modeDeleteAll = false;
     user.modeNewList = false;
+    user.modeDelList = false;
+    user.modeRename = false;
+    user.renameFrom = null;
     user.sessionExpire = Date.now() + sessionDelay;
 }
 /**
