@@ -1,6 +1,10 @@
 var mongoose = require('mongoose');
-var mongoDatabaseURI = 'mongodb://'+process.env.DB_USER+':'+process.env.DB_PASSWORD+'@'+process.env.DB_HOST+':'+process.env.DB_PORT+'/'+process.env.DB_DATABASE;
-mongoose.connect(mongoDatabaseURI,{ useNewUrlParser: true,useUnifiedTopology: true  } );
+var mongoDatabaseURI = 'mongodb://'
+	+ encodeURIComponent(process.env.DB_USER) + ':'
+	+ encodeURIComponent(process.env.DB_PASSWORD) + '@'
+	+ process.env.DB_HOST + ':' + process.env.DB_PORT + '/'
+	+ process.env.DB_DATABASE;
+mongoose.connect(mongoDatabaseURI);
 
 mongoose.connection.on('connected', function() {
 	console.log('Mongoose default connection open to ' + mongoDatabaseURI);

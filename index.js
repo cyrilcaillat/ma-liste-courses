@@ -31,7 +31,7 @@ var nextPurge = Date.now() + sessionDelay;
 bot.use(session());
 bot.use(i18n.middleware())
 bot.use((ctx, next) => {
-    console.log("ctx", ctx);//, "ctx.from", ctx.from, "ctx.chat", ctx.chat);
+    if (process.env.DEBUG === '1') console.log("ctx", ctx);
     purgeUserSession(ctx);
     return next(ctx)
 });
@@ -134,7 +134,7 @@ bot.on('text', (ctx) => {
         }
         if (text.length > 0 && isUserModeAdd(ctx))
             addTodo(ctx, text, function () { findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text); razUserSession(getUserSession(ctx)); });
-        if (text.toLowerCase() == 'y' || text.toLowerCase() == 'o') {
+        if (isUserModeDeleteAll(ctx) && (text.toLowerCase() == 'y' || text.toLowerCase() == 'o')) {
             Todo.deleteMany({ 'chatId': ctx.chat.id }, function (err) {
                 ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn'));
                 razUserSession(getUserSession(ctx));
@@ -146,9 +146,13 @@ bot.on('text', (ctx) => {
     }
 });
 bot.catch((err, ctx) => {
-    console.log('Ooops, ecountered an error for ${ctx.updateType}', err)
+    console.log(`Ooops, encountered an error for ${ctx.updateType}`, err)
 });
 bot.launch();
+
+// Graceful shutdown
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
 /**
  * Affiche de la liste
  *
@@ -358,7 +362,7 @@ function purgeUserSession(ctx) {
         if (nextPurge < Date.now()) {
             if (typeof ctx.session.users === 'undefined') ctx.session.users = {};
             for (const key in ctx.session.users) {
-                if (ctx.session.users[key].sessionExpire === 'undefined' || ctx.session.users[key].sessionExpire < Date.now()) {
+                if (typeof ctx.session.users[key].sessionExpire === 'undefined' || ctx.session.users[key].sessionExpire < Date.now()) {
                     delete ctx.session.users[key];
                 }
             };
