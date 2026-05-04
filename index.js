@@ -151,6 +151,8 @@ bot.command('lists', async (ctx) => {
         { $group: { _id: { $ifNull: ['$listName', 'default'] }, count: { $sum: 1 } } },
         { $sort: { count: -1 } },
     ]);
+    // Inclure la liste active même si elle est vide
+    if (!groups.find(g => g._id === current)) groups.push({ _id: current, count: 0 });
     if (groups.length === 0) {
         return ctx.reply('Aucune liste. Tapez /add pour commencer.').catch(() => {});
     }
