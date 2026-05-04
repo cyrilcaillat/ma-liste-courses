@@ -167,6 +167,15 @@ bot.on('text', async (ctx) => {
 bot.catch((err, ctx) => {
     console.log(`Ooops, encountered an error for ${ctx && ctx.updateType}`, err && (err.stack || err))
 });
+
+// Menu de commandes affiché sur "/"
+bot.telegram.setMyCommands([
+    { command: 'list',   description: 'Afficher la liste' },
+    { command: 'add',    description: 'Ajouter un produit (ex: /add lait,pain)' },
+    { command: 'clean',  description: 'Vider le panier (produits cochés)' },
+    { command: 'delall', description: 'Tout supprimer (avec confirmation o/y)' },
+]).catch((e) => console.log('setMyCommands', e.message));
+
 bot.launch();
 
 // Graceful shutdown
