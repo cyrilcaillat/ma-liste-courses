@@ -18,6 +18,11 @@ var TodoSchema = new mongoose.Schema({
 	},
 	chatId: {
 		type : Number
+	},
+	listName: {
+		type: String,
+		default: 'default',
+		index: true,
 	}
 });
 

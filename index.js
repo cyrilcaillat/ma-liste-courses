@@ -6,6 +6,7 @@ var db = require('./config/database')
 //modèle todo
 var Todo = require('./model/TodosModel');
 var History = require('./model/HistoryModel');
+var ChatState = require('./model/ChatStateModel');
 //telegraf v4
 const { Telegraf, Markup, session } = require('telegraf');
 const TelegrafI18n = require('telegraf-i18n');
@@ -119,12 +120,87 @@ bot.command('add', async (ctx) => {
     }
 });
 /**
- * Commande /list
+ * Commande /list [nom]
+ * Sans argument: affiche la liste active.
+ * Avec un nom existant: bascule sur cette liste et l'affiche.
  */
 bot.command('list', async (ctx) => {
     console.log("command list");
     setUserModeAdd(ctx, false);
-    await findAllTodosByUser(ctx, ctx.message.text.substring(6), cmdList);
+    const arg = ctx.message.text.replace(/^\/list(?:@\S+)?\s*/, '').trim();
+    if (arg.length > 0) {
+        const name = normalizeListName(arg);
+        if (!name) return ctx.reply('Nom invalide. Utilisez a-z 0-9 _ - (max 30)').catch(() => {});
+        const exists = await Todo.exists({ chatId: ctx.chat.id, listName: name });
+        if (!exists) return ctx.reply(`Liste "${name}" inconnue. Utilisez /newlist ${name} pour la créer.`).catch(() => {});
+        await setCurrentList(ctx.chat.id, name);
+        await findAllTodosByUser(ctx, 'text', `▶ Liste active : ${name}`);
+    } else {
+        await findAllTodosByUser(ctx, 'text', cmdList);
+    }
+});
+/**
+ * /lists - affiche toutes les listes du chat avec leur taille
+ */
+bot.command('lists', async (ctx) => {
+    console.log('command lists');
+    setUserModeAdd(ctx, false);
+    const current = await getCurrentList(ctx.chat.id);
+    const groups = await Todo.aggregate([
+        { $match: { chatId: ctx.chat.id } },
+        { $group: { _id: { $ifNull: ['$listName', 'default'] }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+    ]);
+    if (groups.length === 0) {
+        return ctx.reply('Aucune liste. Tapez /add pour commencer.').catch(() => {});
+    }
+    const lines = ['📋 Listes du chat :'];
+    const buttons = [];
+    for (const g of groups) {
+        const marker = g._id === current ? '▶' : '  ';
+        lines.push(`${marker} ${g._id} (${g.count})`);
+        buttons.push(Markup.button.callback((g._id === current ? '▶ ' : '') + g._id, 'l:' + g._id.slice(0, 60)));
+    }
+    await ctx.reply(lines.join('\n'), Markup.inlineKeyboard(chunk(buttons, 2))).catch((e) => console.log('reply lists', e.message));
+});
+/**
+ * /newlist <nom>
+ */
+bot.command('newlist', async (ctx) => {
+    console.log('command newlist');
+    setUserModeAdd(ctx, false);
+    const arg = ctx.message.text.replace(/^\/newlist(?:@\S+)?\s*/, '').trim();
+    const name = normalizeListName(arg);
+    if (!name) return ctx.reply('Usage: /newlist <nom> (a-z 0-9 _ - max 30)').catch(() => {});
+    await setCurrentList(ctx.chat.id, name);
+    await findAllTodosByUser(ctx, 'text', `✨ Nouvelle liste active : ${name}`);
+});
+/**
+ * /dellist <nom> - supprime une liste entière
+ */
+bot.command('dellist', async (ctx) => {
+    console.log('command dellist');
+    const arg = ctx.message.text.replace(/^\/dellist(?:@\S+)?\s*/, '').trim();
+    const name = normalizeListName(arg);
+    if (!name) return ctx.reply('Usage: /dellist <nom>').catch(() => {});
+    const result = await Todo.deleteMany({ chatId: ctx.chat.id, listName: name });
+    const current = await getCurrentList(ctx.chat.id);
+    if (current === name) await setCurrentList(ctx.chat.id, 'default');
+    await ctx.reply(`🗑️ Liste "${name}" supprimée (${result.deletedCount} produit(s))`).catch(() => {});
+});
+/**
+ * /rename <ancien> <nouveau>
+ */
+bot.command('rename', async (ctx) => {
+    console.log('command rename');
+    const args = ctx.message.text.replace(/^\/rename(?:@\S+)?\s*/, '').trim().split(/\s+/);
+    const from = normalizeListName(args[0] || '');
+    const to   = normalizeListName(args[1] || '');
+    if (!from || !to) return ctx.reply('Usage: /rename <ancien> <nouveau>').catch(() => {});
+    const result = await Todo.updateMany({ chatId: ctx.chat.id, listName: from }, { $set: { listName: to } });
+    const current = await getCurrentList(ctx.chat.id);
+    if (current === from) await setCurrentList(ctx.chat.id, to);
+    await ctx.reply(`✏️ ${from} → ${to} (${result.modifiedCount} produit(s))`).catch(() => {});
 });
 /**
  * Vide le panier (produits cochés)
@@ -132,7 +208,8 @@ bot.command('list', async (ctx) => {
 bot.command('clean', async (ctx) => {
     console.log("command clean");
     setUserModeAdd(ctx, false);
-    const result = await Todo.deleteMany({ chatId: ctx.chat.id, done: true });
+    const listName = await getCurrentList(ctx.chat.id);
+    const result = await Todo.deleteMany({ chatId: ctx.chat.id, listName, done: true });
     const who = ctx.from.first_name + ' ' + ctx.from.last_name;
     await findAllTodosByUser(ctx, 'text', `${who} ${ctx.i18n.t('cleanReturn')} (${result.deletedCount})`);
 });
@@ -144,6 +221,13 @@ bot.on('callback_query', async (ctx) => {
         var id = ctx.update.callback_query.data;
         console.log("callback id", id);
         await ctx.answerCbQuery().catch(() => {});
+        // Bascule de liste via /lists (préfixe 'l:')
+        if (typeof id === 'string' && id.startsWith('l:')) {
+            const name = id.substring(2);
+            await setCurrentList(ctx.chat.id, name);
+            await findAllTodosByUser(ctx, 'text', `▶ Liste active : ${name}`);
+            return;
+        }
         // Suggestion d'ajout via bouton inline (préfixe 'a:')
         if (typeof id === 'string' && id.startsWith('a:')) {
             const text = id.substring(2);
@@ -182,7 +266,8 @@ bot.on('text', async (ctx) => {
             razUserSession(getUserSession(ctx));
         }
         if (isUserModeDeleteAll(ctx) && (text.toLowerCase() == 'y' || text.toLowerCase() == 'o')) {
-            await Todo.deleteMany({ 'chatId': ctx.chat.id });
+            const listName = await getCurrentList(ctx.chat.id);
+            await Todo.deleteMany({ chatId: ctx.chat.id, listName });
             await ctx.reply(ctx.from.first_name + ' ' + ctx.from.last_name + ' ' + ctx.i18n.t('deleteAllReturn')).catch((e) => console.log('reply delall', e.message));
             razUserSession(getUserSession(ctx));
         }
@@ -196,11 +281,20 @@ bot.catch((err, ctx) => {
 
 // Menu de commandes affiché sur "/"
 bot.telegram.setMyCommands([
-    { command: 'list',   description: 'Afficher la liste' },
-    { command: 'add',    description: 'Ajouter un produit (ex: /add lait,pain)' },
-    { command: 'clean',  description: 'Vider le panier (produits cochés)' },
-    { command: 'delall', description: 'Tout supprimer (avec confirmation o/y)' },
+    { command: 'list',    description: 'Afficher la liste (ou /list <nom> pour basculer)' },
+    { command: 'add',     description: 'Ajouter un produit (ex: /add lait,pain)' },
+    { command: 'clean',   description: 'Vider le panier (produits cochés)' },
+    { command: 'lists',   description: 'Lister toutes les listes du chat' },
+    { command: 'newlist', description: 'Créer et basculer sur une liste : /newlist <nom>' },
+    { command: 'dellist', description: 'Supprimer une liste : /dellist <nom>' },
+    { command: 'rename',  description: 'Renommer une liste : /rename <a> <b>' },
+    { command: 'delall',  description: 'Tout supprimer dans la liste active (avec o/y)' },
 ]).catch((e) => console.log('setMyCommands', e.message));
+
+// Migration douce: les todos préexistants sans listName -> 'default'
+Todo.updateMany({ listName: { $exists: false } }, { $set: { listName: 'default' } })
+    .then((r) => { if (r.modifiedCount) console.log('migration listName: ' + r.modifiedCount + ' todo(s)'); })
+    .catch((e) => console.log('migration listName', e.message));
 
 bot.launch();
 
@@ -218,8 +312,9 @@ async function findAllTodosByUser(ctx, sort, title) {
     try {
         console.log("findAllTodosByUser", sort, title);
         if (sort != "date") sort = "text";
+        const listName = await getCurrentList(ctx.chat.id);
         if (title !== cmdList && typeof title !== 'undefined' && title.length > 0) ctx.reply(title).catch((e) => console.log('reply title', e.message));
-        const query = { "chatId": ctx.chat.id };
+        const query = { "chatId": ctx.chat.id, listName };
         const cursor = Todo.find(query).sort(sort).collation({
             locale: "en",
             strength: 2,
@@ -259,9 +354,9 @@ async function findAllTodosByUser(ctx, sort, title) {
         // Construction du texte
         let reply;
         if (todoItems.length === 0 && doneItems.length === 0) {
-            reply = ctx.i18n.t('empty');
+            reply = `(${listName}) ` + ctx.i18n.t('empty');
         } else {
-            const parts = [];
+            const parts = [`📁 ${listName}`];
             if (todoItems.length > 0) {
                 parts.push(`${ctx.i18n.t('toBuy')} (${todoItems.length})\n` + todoItems.map(t => t.text).join(', '));
             }
@@ -309,6 +404,8 @@ async function findTodoById(ctx, id, callback) {
         const query = {
             _id: id,
             chatId: ctx.chat.id
+            // pas de listName: on autorise toggle d'un produit même si on a changé de liste
+            // entre l'affichage et le clic
         }
         const todo = await Todo.findOne(query);
         if (callback) callback(todo);
@@ -340,31 +437,35 @@ function addTodo(ctx, text, callback) {
             var textArray = text.split(/\r\n|\r|\n|,|;/);
             var todos = new Array();
             var historyOps = new Array();
-            for (var i in textArray) {
-                const t = textArray[i].trim();
-                if (t.length > 0) {
-                    todos.push({
-                        text: t,
-                        done: false,
-                        creator: ctx.from.first_name + ' ' + ctx.from.last_name,
-                        creatorId: ctx.from.id,
-                        chatId: ctx.chat.id
-                    });
-                    historyOps.push({
-                        updateOne: {
-                            filter: { chatId: ctx.chat.id, text: t },
-                            update: { $inc: { count: 1 }, $set: { lastUsed: new Date() } },
-                            upsert: true,
-                        }
-                    });
+            // Capture la liste courante une fois
+            getCurrentList(ctx.chat.id).then((listName) => {
+                for (var i in textArray) {
+                    const t = textArray[i].trim();
+                    if (t.length > 0) {
+                        todos.push({
+                            text: t,
+                            done: false,
+                            creator: ctx.from.first_name + ' ' + ctx.from.last_name,
+                            creatorId: ctx.from.id,
+                            chatId: ctx.chat.id,
+                            listName,
+                        });
+                        historyOps.push({
+                            updateOne: {
+                                filter: { chatId: ctx.chat.id, text: t },
+                                update: { $inc: { count: 1 }, $set: { lastUsed: new Date() } },
+                                upsert: true,
+                            }
+                        });
+                    }
                 }
-            }
-            Todo.insertMany(todos).then(function (datas) {
-                console.log("added : " + text);
-                if (historyOps.length > 0) {
-                    History.bulkWrite(historyOps).catch((e) => console.log('history bulk', e.message));
-                }
-                if (callback) callback(datas);
+                Todo.insertMany(todos).then(function (datas) {
+                    console.log("added : " + text + " to " + listName);
+                    if (historyOps.length > 0) {
+                        History.bulkWrite(historyOps).catch((e) => console.log('history bulk', e.message));
+                    }
+                    if (callback) callback(datas);
+                });
             });
         } else if (callback) callback();
     } catch (e) {
@@ -372,12 +473,32 @@ function addTodo(ctx, text, callback) {
     }
 }
 /**
+ * Récupère la liste active du chat ('default' si non définie).
+ */
+async function getCurrentList(chatId) {
+    const s = await ChatState.findOne({ chatId }).lean();
+    return (s && s.currentList) || 'default';
+}
+async function setCurrentList(chatId, currentList) {
+    await ChatState.updateOne({ chatId }, { $set: { currentList } }, { upsert: true });
+}
+/**
+ * Valide et normalise un nom de liste : a-z 0-9 _ - (1-30).
+ */
+function normalizeListName(raw) {
+    if (typeof raw !== 'string') return null;
+    const s = raw.trim().toLowerCase();
+    if (!/^[a-z0-9_-]{1,30}$/.test(s)) return null;
+    return s;
+}
+/**
  * Renvoie le top des produits historiques pour ce chat,
  * en excluant ceux déjà dans la liste active (non done).
  */
 async function getSuggestions(ctx, limit = 12) {
     try {
-        const active = await Todo.find({ chatId: ctx.chat.id, done: false }).select('text').lean();
+        const listName = await getCurrentList(ctx.chat.id);
+        const active = await Todo.find({ chatId: ctx.chat.id, listName, done: false }).select('text').lean();
         const activeSet = new Set(active.map(t => t.text));
         const top = await History.find({ chatId: ctx.chat.id })
             .sort({ count: -1, lastUsed: -1 })
