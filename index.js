@@ -458,10 +458,7 @@ bot.telegram.setMyCommands([
     { command: 'list',    description: 'Afficher la liste (ou /list <nom> pour basculer)' },
     { command: 'add',     description: 'Ajouter un produit (ex: /add lait,pain)' },
     { command: 'clean',   description: 'Vider le panier (produits cochés)' },
-    { command: 'lists',   description: 'Lister toutes les listes du chat' },
-    { command: 'newlist', description: 'Créer et basculer sur une liste : /newlist <nom>' },
-    { command: 'dellist', description: 'Supprimer une liste : /dellist <nom>' },
-    { command: 'rename',  description: 'Renommer une liste : /rename <a> <b>' },
+    { command: 'lists',   description: 'Gérer les listes du chat' },
     { command: 'delall',  description: 'Tout supprimer dans la liste active (avec o/y)' },
 ]).catch((e) => console.log('setMyCommands', e.message));
 
