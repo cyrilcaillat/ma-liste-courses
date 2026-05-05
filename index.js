@@ -168,30 +168,43 @@ bot.command('list', async (ctx) => {
 bot.command('lists', async (ctx) => {
     console.log('command lists');
     setUserModeAdd(ctx, false);
+    await sendListsMenu(ctx);
+});
+/**
+ * Construit et envoie le menu /lists.
+ * Séparé pour pouvoir le réafficher depuis les callbacks.
+ */
+async function sendListsMenu(ctx) {
     const current = await getCurrentList(ctx.chat.id);
     const known = await getKnownLists(ctx.chat.id);
+    const isAdmin = await ensureAdmin(ctx);
     const groups = await Todo.aggregate([
         { $match: { chatId: ctx.chat.id } },
         { $group: { _id: { $ifNull: ['$listName', 'default'] }, count: { $sum: 1 } } },
         { $sort: { count: -1 } },
     ]);
     const counts = new Map(groups.map(g => [g._id, g.count]));
-    // Union: listes connues + listes ayant des produits
     const names = Array.from(new Set([...known, ...counts.keys(), current]));
     names.sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0));
     if (names.length === 0) {
-        return ctx.reply('Aucune liste. Tapez /add pour commencer.').catch(() => {});
+        return ctx.reply('Aucune liste. Tapez /newlist pour commencer.').catch(() => {});
     }
     const lines = ['📋 Listes du chat :'];
-    const buttons = [];
+    const rows = [];
     for (const n of names) {
         const c = counts.get(n) || 0;
-        const marker = n === current ? '▶' : '  ';
-        lines.push(`${marker} ${n} (${c})`);
-        buttons.push(Markup.button.callback((n === current ? '▶ ' : '') + n, 'l:' + n.slice(0, 60)));
+        const active = n === current;
+        lines.push(`${active ? '▶' : '  '} ${n} (${c})`);
+        const row = [Markup.button.callback((active ? '▶ ' : '') + n + ` (${c})`, 'l:' + n.slice(0, 60))];
+        if (isAdmin) {
+            row.push(Markup.button.callback('✏️', 'r:' + n.slice(0, 60)));
+            row.push(Markup.button.callback('🗑️', 'd:' + n.slice(0, 60)));
+        }
+        rows.push(row);
     }
-    await ctx.reply(lines.join('\n'), Markup.inlineKeyboard(chunk(buttons, 2))).catch((e) => console.log('reply lists', e.message));
-});
+    rows.push([Markup.button.callback('➕ Nouvelle liste', 'nl:')]);
+    await ctx.reply(lines.join('\n'), Markup.inlineKeyboard(rows)).catch((e) => console.log('reply lists', e.message));
+}
 /**
  * /newlist <nom>
  */
@@ -297,6 +310,56 @@ bot.on('callback_query', async (ctx) => {
             const name = id.substring(2);
             await setCurrentList(ctx.chat.id, name);
             await findAllTodosByUser(ctx, 'text', `▶ Liste active : ${name}`);
+            return;
+        }
+        // Nouvelle liste depuis /lists (préfixe 'nl:')
+        if (id === 'nl:') {
+            if (!(await denyIfNotAdmin(ctx))) return;
+            setUserModeNewList(ctx, true);
+            await ctx.reply('Nom de la nouvelle liste ? (a-z 0-9 _ - max 30)', {
+                ...Markup.forceReply(),
+                disable_notification: true,
+            }).catch(() => {});
+            return;
+        }
+        // Renommer depuis /lists (préfixe 'r:')
+        if (typeof id === 'string' && id.startsWith('r:')) {
+            if (!(await denyIfNotAdmin(ctx))) return;
+            const from = id.substring(2);
+            const user = getUserSession(ctx);
+            user.modeRename = 'to';
+            user.renameFrom = from;
+            await ctx.reply(`Nouveau nom pour « ${from} » ?`, {
+                ...Markup.forceReply(),
+                disable_notification: true,
+            }).catch(() => {});
+            return;
+        }
+        // Supprimer depuis /lists (préfixe 'd:')
+        if (typeof id === 'string' && id.startsWith('d:')) {
+            if (!(await denyIfNotAdmin(ctx))) return;
+            const name = id.substring(2);
+            const count = await Todo.countDocuments({ chatId: ctx.chat.id, listName: name });
+            // Demande confirmation avec deux boutons inline
+            await ctx.reply(
+                `Supprimer la liste « ${name} » (${count} produit(s)) ?`,
+                Markup.inlineKeyboard([
+                    Markup.button.callback('✅ Confirmer', 'dc:' + name.slice(0, 60)),
+                    Markup.button.callback('❌ Annuler', 'dx:'),
+                ])
+            ).catch(() => {});
+            return;
+        }
+        // Confirmation suppression (préfixe 'dc:')
+        if (typeof id === 'string' && id.startsWith('dc:')) {
+            if (!(await denyIfNotAdmin(ctx))) return;
+            const name = id.substring(3);
+            await doDelList(ctx, name);
+            return;
+        }
+        // Annulation suppression
+        if (id === 'dx:') {
+            await ctx.reply('Annulé.').catch(() => {});
             return;
         }
         // Suggestion d'ajout via bouton inline (préfixe 'a:')
