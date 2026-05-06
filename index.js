@@ -484,6 +484,10 @@ async function findAllTodosByUser(ctx, sort, title) {
         console.log("findAllTodosByUser", sort, title);
         if (sort != "date") sort = "text";
         const listName = await getCurrentList(ctx.chat.id);
+        const knownLists = await getKnownLists(ctx.chat.id);
+        const otherLists = Array.from(new Set([...(knownLists || []), listName]))
+            .filter((n) => n !== listName)
+            .sort((a, b) => a.localeCompare(b));
         if (title !== cmdList && typeof title !== 'undefined' && title.length > 0) ctx.reply(title).catch((e) => console.log('reply title', e.message));
         const query = { "chatId": ctx.chat.id, listName };
         const cursor = Todo.find(query).sort(sort).collation({
@@ -522,39 +526,45 @@ async function findAllTodosByUser(ctx, sort, title) {
             if (row.length >= buttonsByRow) pushRow();
         }
         pushRow();
+        // Boutons de bascule vers les autres listes
+        const listSwitchRows = chunk(
+            otherLists.map((n) => Markup.button.callback('📁 ' + n, 'l:' + n.slice(0, 60))),
+            buttonsByRow
+        );
         // Construction du texte
         let reply;
         if (todoItems.length === 0 && doneItems.length === 0) {
-            reply = `(${listName}) ` + ctx.i18n.t('empty');
+            reply = `<b>📁 ${escapeHtml(listName)}</b>\n` + escapeHtml(ctx.i18n.t('empty'));
         } else {
-            const parts = [`📁 ${listName}`];
+            const parts = [`<b>📁 ${escapeHtml(listName)}</b>`];
             if (todoItems.length > 0) {
-                parts.push(`${ctx.i18n.t('toBuy')} (${todoItems.length})\n` + todoItems.map(t => t.text).join(', '));
+                parts.push(`${escapeHtml(ctx.i18n.t('toBuy'))} (${todoItems.length})\n` + todoItems.map(t => escapeHtml(t.text)).join(', '));
             }
             if (doneItems.length > 0) {
-                parts.push(`${ctx.i18n.t('inBasket')} (${doneItems.length})\n` + doneItems.map(t => t.text).join(', '));
+                parts.push(`${escapeHtml(ctx.i18n.t('inBasket'))} (${doneItems.length})\n` + doneItems.map(t => escapeHtml(t.text)).join(', '));
             }
             if (todoItems.length === 0 && doneItems.length > 0) {
-                parts.push(ctx.i18n.t('allChecked'));
+                parts.push(escapeHtml(ctx.i18n.t('allChecked')));
             }
             reply = parts.join('\n\n');
         }
-        const markup = Markup.inlineKeyboard(buttonsRows);
+        const markup = Markup.inlineKeyboard([...listSwitchRows, ...buttonsRows]);
+        const messageOptions = { ...markup, parse_mode: 'HTML' };
         if (reply.length > 0) {
             if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
                 try {
-                    await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, markup);
+                    await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.listMessageId, ctx.session.listInlineMessageId, reply, messageOptions);
                 } catch (e) {
                     console.log('editMessageText fallback', e.message);
                     try {
-                        const replyCtx = await ctx.reply(reply, markup);
+                        const replyCtx = await ctx.reply(reply, messageOptions);
                         ctx.session.listMessageId = replyCtx.message_id;
                         ctx.session.listInlineMessageId = replyCtx.inline_message_id;
                     } catch (e2) { console.log('reply fallback', e2.message); }
                 }
             } else {
                 try {
-                    const replyCtx = await ctx.reply(reply, markup);
+                    const replyCtx = await ctx.reply(reply, messageOptions);
                     ctx.session.listMessageId = replyCtx.message_id;
                     ctx.session.listInlineMessageId = replyCtx.inline_message_id;
                 } catch (e) { console.log('reply list', e.message); }
@@ -676,6 +686,15 @@ function normalizeListName(raw) {
     const s = raw.trim().toLowerCase();
     if (!/^[a-z0-9_-]{1,30}$/.test(s)) return null;
     return s;
+}
+function escapeHtml(raw) {
+    if (typeof raw !== 'string') return '';
+    return raw
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 /**
  * Renvoie le top des produits historiques pour ce chat,
