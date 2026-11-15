@@ -484,10 +484,6 @@ async function findAllTodosByUser(ctx, sort, title) {
         console.log("findAllTodosByUser", sort, title);
         if (sort != "date") sort = "text";
         const listName = await getCurrentList(ctx.chat.id);
-        const knownLists = await getKnownLists(ctx.chat.id);
-        const otherLists = Array.from(new Set([...(knownLists || []), listName]))
-            .filter((n) => n !== listName)
-            .sort((a, b) => a.localeCompare(b));
         if (title !== cmdList && typeof title !== 'undefined' && title.length > 0) ctx.reply(title).catch((e) => console.log('reply title', e.message));
         const query = { "chatId": ctx.chat.id, listName };
         const cursor = Todo.find(query).sort(sort).collation({
@@ -526,11 +522,6 @@ async function findAllTodosByUser(ctx, sort, title) {
             if (row.length >= buttonsByRow) pushRow();
         }
         pushRow();
-        // Boutons de bascule vers les autres listes
-        const listSwitchRows = chunk(
-            otherLists.map((n) => Markup.button.callback('📁 ' + n, 'l:' + n.slice(0, 60))),
-            buttonsByRow
-        );
         // Construction du texte
         let reply;
         if (todoItems.length === 0 && doneItems.length === 0) {
@@ -548,7 +539,7 @@ async function findAllTodosByUser(ctx, sort, title) {
             }
             reply = parts.join('\n\n');
         }
-        const markup = Markup.inlineKeyboard([...listSwitchRows, ...buttonsRows]);
+        const markup = Markup.inlineKeyboard(buttonsRows);
         const messageOptions = { ...markup, parse_mode: 'HTML' };
         if (reply.length > 0) {
             if (title !== cmdList && typeof ctx.session.listMessageId !== 'undefined') {
