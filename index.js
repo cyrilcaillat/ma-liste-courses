@@ -523,7 +523,7 @@ async function findAllTodosByUser(ctx, sort, title) {
                 parts.push(`${escapeHtml(ctx.i18n.t('toBuy'))} (${todoItems.length})\n` + todoItems.map(t => escapeHtml(t.text)).join(', '));
             }
             if (doneItems.length > 0) {
-                parts.push(`${escapeHtml(ctx.i18n.t('inBasket'))} (${doneItems.length})\n` + doneItems.map(t => escapeHtml(t.text)).join(', '));
+                parts.push(`${escapeHtml(ctx.i18n.t('inBasket'))} (${doneItems.length})\n` + doneItems.map(t => `<s>${escapeHtml(t.text)}</s>`).join(', '));
             }
             if (todoItems.length === 0 && doneItems.length > 0) {
                 parts.push(escapeHtml(ctx.i18n.t('allChecked')));
