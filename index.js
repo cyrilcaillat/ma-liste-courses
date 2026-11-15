@@ -358,7 +358,6 @@ bot.on('callback_query', async (ctx) => {
         if (typeof id === 'string' && id.startsWith('a:')) {
             const text = id.substring(2);
             await new Promise((resolve) => addTodo(ctx, text, resolve));
-            setUserModeAdd(ctx, false);
             await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
             return;
         }
