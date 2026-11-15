@@ -509,7 +509,7 @@ async function findAllTodosByUser(ctx, sort, title) {
         }
         if (todoItems.length && doneItems.length) pushRow(); // séparateur visuel
         for (const t of doneItems) {
-            row.push(Markup.button.callback('✓ ' + t.text, t.id));
+            row.push(Markup.button.callback('✓ ' + strikeThroughText(t.text), t.id));
             if (row.length >= buttonsByRow) pushRow();
         }
         pushRow();
@@ -677,6 +677,9 @@ function escapeHtml(raw) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+function strikeThroughText(text) {
+    return Array.from(text, (character) => /\s/u.test(character) ? character : character + '\u0336').join('');
 }
 /**
  * Renvoie le top des produits historiques pour ce chat,
