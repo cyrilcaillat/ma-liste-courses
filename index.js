@@ -84,7 +84,6 @@ bot.command('delall', async (ctx) => {
     setUserModeDeleteAll(ctx, true);
     setUserModeAdd(ctx, false);
     ctx.reply(ctx.i18n.t('addConfirmDeleteAll'), {
-        ...Markup.forceReply(),
         reply_parameters: { message_id: ctx.message.message_id },
     }).catch((e) => console.log('reply delall', e.message));
 });
@@ -118,7 +117,6 @@ bot.command('add', async (ctx) => {
                 await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
             } else {
                 await ctx.reply(ctx.i18n.t('addWhat'), {
-                    ...Markup.forceReply(),
                     disable_notification: true,
                     reply_parameters: { message_id: ctx.message.message_id },
                 }).catch((e) => console.log('reply addWhat', e.message));
@@ -216,7 +214,6 @@ bot.command('newlist', async (ctx) => {
         // Pas d'argument : on attend le nom dans le prochain message
         setUserModeNewList(ctx, true);
         await ctx.reply('Nom de la nouvelle liste ? (a-z 0-9 _ - max 30)', {
-            ...Markup.forceReply(),
             disable_notification: true,
             reply_parameters: { message_id: ctx.message.message_id },
         }).catch((e) => console.log('reply newlist prompt', e.message));
@@ -238,7 +235,6 @@ bot.command('dellist', async (ctx) => {
     if (arg.length === 0) {
         setUserModeDelList(ctx, true);
         await ctx.reply('Nom de la liste à supprimer ?', {
-            ...Markup.forceReply(),
             disable_notification: true,
             reply_parameters: { message_id: ctx.message.message_id },
         }).catch((e) => console.log('reply dellist prompt', e.message));
@@ -262,7 +258,6 @@ bot.command('rename', async (ctx) => {
         user.modeRename = 'from';
         user.renameFrom = null;
         await ctx.reply('Nom de la liste à renommer ?', {
-            ...Markup.forceReply(),
             disable_notification: true,
             reply_parameters: { message_id: ctx.message.message_id },
         }).catch((e) => console.log('reply rename prompt', e.message));
@@ -275,7 +270,6 @@ bot.command('rename', async (ctx) => {
         user.modeRename = 'to';
         user.renameFrom = from;
         await ctx.reply(`Nouveau nom pour "${from}" ?`, {
-            ...Markup.forceReply(),
             disable_notification: true,
             reply_parameters: { message_id: ctx.message.message_id },
         }).catch((e) => console.log('reply rename prompt2', e.message));
@@ -317,7 +311,6 @@ bot.on('callback_query', async (ctx) => {
             if (!(await denyIfNotAdmin(ctx))) return;
             setUserModeNewList(ctx, true);
             await ctx.reply('Nom de la nouvelle liste ? (a-z 0-9 _ - max 30)', {
-                ...Markup.forceReply(),
                 disable_notification: true,
             }).catch(() => {});
             return;
@@ -330,7 +323,6 @@ bot.on('callback_query', async (ctx) => {
             user.modeRename = 'to';
             user.renameFrom = from;
             await ctx.reply(`Nouveau nom pour « ${from} » ?`, {
-                ...Markup.forceReply(),
                 disable_notification: true,
             }).catch(() => {});
             return;
@@ -419,7 +411,6 @@ bot.on('text', async (ctx) => {
             userSess.modeRename = 'to';
             userSess.renameFrom = from;
             await ctx.reply(`Nouveau nom pour "${from}" ?`, {
-                ...Markup.forceReply(),
                 disable_notification: true,
                 reply_parameters: { message_id: ctx.message.message_id },
             }).catch(() => {});
