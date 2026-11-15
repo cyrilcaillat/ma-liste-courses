@@ -117,6 +117,7 @@ bot.command('add', async (ctx) => {
                 await findAllTodosByUser(ctx, 'text', ctx.i18n.t('added') + ' ' + text);
             } else {
                 await ctx.reply(ctx.i18n.t('addWhat'), {
+                    ...Markup.forceReply(),
                     disable_notification: true,
                     reply_parameters: { message_id: ctx.message.message_id },
                 }).catch((e) => console.log('reply addWhat', e.message));
